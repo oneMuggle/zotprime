@@ -15,7 +15,7 @@
 # 5. 客户端安装后由 `bin/set-zotero-dataserver.ps1` (C 路径) 做 dataserver
 #    URL 注入 —— A' 注入能力由 C 路径 PowerShell 在用户机器上完成
 
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim AS base
 
 ARG WIN7_VERSION=5.0.96.3
 
