@@ -65,8 +65,14 @@ else
     fi
     VER_LINE=$(cat)
     log_ts "stdin: $VER_LINE"
+    if [ -z "$VER_LINE" ]; then
+        log_ts "stdin was empty, cannot parse"
+        exit 2
+    fi
     # 提取 [Version X.Y.Z]
-    VER_RAW=$(echo "$VER_LINE" | grep -oE 'Version [0-9.]+' | head -1 | awk '{print $2}' | tr -d '\r')
+    # 用 { ... || true; } 包裹 grep,避免空匹配时 grep 返回 1 触发 set -e
+    # (pipefail 会把 grep 的非零退出码冒泡到整个管道,从而提前 exit 1 而不是 2)
+    VER_RAW=$(echo "$VER_LINE" | { grep -oE 'Version [0-9.]+' || true; } | head -1 | awk '{print $2}' | tr -d '\r')
     if [ -z "$VER_RAW" ]; then
         log_ts "could not parse Version from stdin"
         exit 2

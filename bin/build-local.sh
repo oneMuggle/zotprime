@@ -56,6 +56,12 @@ else
     log_info "Modern build mode: $DOCKERFILE (version $REQUIRED_VERSION)"
 fi
 
+# TODO(win7): DOCKERFILE/TARGET_TAG/TEST_DOCKERFILE/DIST_DIR are computed above
+# (in both the WIN7=1 and WIN7=0 branches) but the `docker build` invocation
+# that consumes them is not in this script's current scope. The script only
+# builds the server-side images (dataserver, db, elasticsearch, ...). See plan
+# PR#5 follow-up. (Pre-existing issue: the WIN7=0 branch has the same gap.)
+
 echo "Building ZotPrime images (tag: ${VER})..."
 
 cd "$(dirname "$0")/../stack"
