@@ -131,6 +131,7 @@ Docker 构建 (prebuild_client_win7.Dockerfile)
 | C3 | Win7 专用 Dockerfile | `prebuild_client_win7.Dockerfile` + `clientbuildtest_win7.Dockerfile` | 拉取并打 5.0.96.3 Windows 安装包 | C1, C2, Docker | `docker build` 产出 .exe |
 | C4 | 构建开关 + 探测脚本 | `bin/build-local.sh`（增 `WIN7=1`）+ `bin/detect-win-version.sh`（新增） | 决定构建哪个客户端 + 按 Windows 版本选安装包 | C3, `os` 命令 | shellcheck + bats |
 | C5 | 内网部署包/文档 | `bin/package-for-intranet.sh`（改）+ `clients-manifest.json`（新）+ `docs/technical/18-win7-compatibility.md`（新）+ `docs/user-manual/09-win7-installation.md`（新） | 打包两个客户端 + 写明 Win7 安装步骤 | C3, C4 | 文档链接有效、脚本退出码 0 |
+| C6 | dataserver URL 注入（双保险） | `prebuild_client_win7.Dockerfile` 内的 XPI 解包+改+`makensis` 重打包（A' 主路径） + `bin/set-zotero-dataserver.ps1`（C 兜底路径） | 构建期主注入 + 部署后兜底注入 | C3, 7z, makensis, PowerShell 5.x | 构建产物 .exe 装到 Win7 后同步 dataserver 正确 |
 
 ### 4.1 C1 + C2 取舍：submodule 而非 subtree / fork
 
@@ -277,6 +278,136 @@ Schema 校验：`tests/integration/manifest-schema.json`（JSON Schema draft-07�
 trap 'echo "[FATAL] Unexpected error at line $LINENO. Dist: $DIST_DIR. Log: $DIST_DIR/build.log" >&2' ERR
 ```
 
+### 6.5 dataserver URL 注入（C6，双保险：A' 主 + C 兜底）
+
+**A' 主路径：构建期 XPI 重打包 + makensis 重编译**
+
+`prebuild_client_win7.Dockerfile` 内的注入序列：
+
+```dockerfile
+ARG WIN7_VERSION=5.0.96.3
+ARG HOST_DS=http://zotprime.local:8080/
+ARG HOST_ST=ws://zotprime.local:8081/
+
+# 1. 拉官方 5.0.96.3 Windows setup.exe
+RUN curl -L -o /tmp/zotero-setup.exe \
+    https://download.zotero.org/client/release/${WIN7_VERSION%.*}/Zotero-${WIN7_VERSION}_win-x86_64-setup.exe
+
+# 2. 7z 解 NSIS 自解压包
+RUN 7z x -y -o/opt/zotero_build /tmp/zotero-setup.exe
+
+# 3. 定位 Zotero 扩展 XPI（多路径候选，适配 5.0 时代不同安装布局）
+RUN ZOTERO_XPI=$(find /opt/zotero_build -name "zotero@chnm.org.xpi" | head -1) && \
+    test -n "$ZOTERO_XPI" || { echo "[FATAL] XPI not found" >&2; exit 12; } && \
+    echo "Found XPI: $ZOTERO_XPI"
+
+# 4. 解 XPI → sed config.js → 7z 重打包
+RUN mkdir -p /opt/xpi_work && cd /opt/xpi_work && \
+    7z x -y "$ZOTERO_XPI" && \
+    test -f resource/config.js || { echo "[FATAL] config.js not in XPI" >&2; exit 12; } && \
+    sed -i "s|https://api.zotero.org|${HOST_DS}|g" resource/config.js && \
+    sed -i "s|wss://stream.zotero.org|${HOST_ST}|g" resource/config.js && \
+    rm -f "$ZOTERO_XPI" && \
+    7z a -tzip -mx=9 "$ZOTERO_XPI" .
+
+# 5. makensis 重编译 NSIS 安装包
+RUN cp /opt/zotero_build/installer.nsi /opt/ && \
+    cd /opt && makensis installer.nsi && \
+    cp setup.exe /dist/Zotero-${WIN7_VERSION}_win-x86_64-setup.exe && \
+    sha256sum /dist/Zotero-${WIN7_VERSION}_win-x86_64-setup.exe \
+        | awk '{print $1}' > /dist/Zotero-${WIN7_VERSION}_win-x86_64-setup.exe.sha256
+```
+
+**关键决策（已采纳）：**
+
+| 取舍 | 决策 | 理由 |
+|------|------|------|
+| 解 NSIS 改 XPI 后用 `makensis` 重打包 | ✅ 采用 | 7zSFX 重新组装会丢失 NSIS 宏（`$PLUGINSDIR` 等），安装时崩；makensis 才是 5.0 时代的标准 NSIS 编译器 |
+| sed 替换 `https://api.zotero.org` → `${HOST_DS}` | ✅ 采用 | 与现代版 `prebuild_client.Dockerfile:31-35` 的 sed 规则 1/3 对称 |
+| sed 替换 `wss://stream.zotero.org` → `${HOST_ST}` | ✅ 采用 | 与现代版 sed 规则 2 对称 |
+| 不动 `https://www.zotero.org/`（规则 3） | ✅ 采用 | Win7 客户端不内置浏览器主页，不需要替换 |
+| 不动 proxy check URL（规则 4） | ✅ 采用 | 5.0 时代 Zotero 不会调用 proxy check |
+| HOST_DS 默认 `http://zotprime.local:8080/` | ✅ 采用 | 跟现代版 ARG 默认值风格一致 |
+| 不内嵌 7za.exe 到 NSIS 包 | ✅ 采用 | 注入全部在构建期完成，运行时不需要 7z |
+| 失败时保留 `/opt/zotero_build` 供调试 | ✅ 采用 | 退出码 12 时 `docker cp` 可提取 |
+
+**C 兜底路径：部署后 PowerShell 注入**
+
+`bin/set-zotero-dataserver.ps1` 关键逻辑：
+
+```powershell
+param(
+    [string]$InstallPath = "${env:ProgramFiles}\Zotero",
+    [string]$DataServerUrl = "http://zotprime.local:8080/",
+    [string]$StreamServerUrl = "ws://zotprime.local:8081/"
+)
+$ErrorActionPreference = "Stop"
+
+# 定位 XPI（多路径候选）
+$xpiCandidates = @(
+    "$InstallPath\distribution\extensions\zotero@chnm.org.xpi",
+    "$env:APPDATA\Zotero\Zotero\profiles\*\extensions\zotero@chnm.org.xpi"
+)
+$xpi = $xpiCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $xpi) { Write-Error "Zotero XPI not found"; exit 1 }
+
+# 备份
+$bak = "$xpi.bak.$(Get-Date -Format yyyyMMddHHmmss)"
+Copy-Item -Path $xpi -Destination $bak -Force
+
+# 用 System.IO.Compression 改 zip
+$tempDir = Join-Path $env:TEMP "zotero-xpi-$(Get-Random)"
+New-Item -ItemType Directory -Path $tempDir | Out-Null
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[System.IO.Compression.ZipFile]::ExtractToDirectory($xpi, $tempDir)
+
+# 改 config.js
+$configJs = Join-Path $tempDir "resource\config.js"
+$content = Get-Content $configJs -Raw
+$content = $content -replace 'https://api\.zotero\.org', $DataServerUrl
+$content = $content -replace 'wss://stream\.zotero\.org', $StreamServerUrl
+[System.IO.File]::WriteAllText($configJs, $content, [System.Text.Encoding]::UTF8)
+
+# 重打包
+Remove-Item -Path $xpi -Force
+[System.IO.Compression.ZipFile]::CreateFromDirectory($tempDir, $xpi)
+Remove-Item -Recurse -Path $tempDir
+
+Write-Host "Zotero dataserver set to: $DataServerUrl (backup: $bak)"
+```
+
+**PowerShell 兼容性矩阵：**
+
+| Win7 PS 版本 | 默认包含 | `System.IO.Compression` | 备注 |
+|--------------|----------|--------------------------|------|
+| 2.0（默认） | ❌ 缺 ZipFile API | 需 fallback 到 `Shell.Application` | 路径复杂，回退方案见 6.5.1 |
+| 3.0 | ❌ | 同上 | |
+| 4.0 | ❌ | 同上 | |
+| **5.0+** | ✅ `System.IO.Compression.FileSystem` | 直接用 | 需安装 WMF 5.1 |
+
+→ **A' 主路径**已经把 dataserver 注入构建期完成，**C 兜底路径只在 A' 失败时使用**（运维 push 修补），所以兜底路径的兼容性要求可放松。
+
+**6.5.1 C 路径的 PS 2.0 fallback（仅兜底时使用）：**
+
+```powershell
+# PS 2.0 缺 System.IO.Compression，改用 Shell.Application (zip 文件夹能力有限)
+$shell = New-Object -ComObject Shell.Application
+$folder = $shell.Namespace((Split-Path $xpi))
+# ... Shell.Application 处理 zip 不可靠，建议直接告知用户升级 PS 5.1
+Write-Warning "PowerShell < 5.0 detected, please install WMF 5.1 or use A' build path"
+exit 3
+```
+
+**6.5.2 注入正确性验证（无论 A' 还是 C）：**
+
+装到 Win7 后第一次启动 Zotero 5.0.96.3，访问 `about:config`（地址栏输入）查以下 pref：
+
+```
+extensions.zotero.{...}.API_URL  → 期望等于 ${HOST_DS}
+```
+
+（pref key 实际是 `extensions.zotero.<addon-id>.API_URL`，需在装机后用 `about:config` 查；注入失败的特征是仍为 `https://api.zotero.org/`。）
+
 ## 7. 测试策略
 
 ### 7.1 测试矩阵
@@ -366,19 +497,23 @@ curl -X POST "$DATASERVER/items" \
 - [ ] `.gitmodules` 提交
 - [x] 写本设计稿并提交
 
-### M1：构建链路（3 天）
+### M1：构建链路（4 天，含 A' dataserver 注入）
 
 - [ ] `prebuild_client_win7.Dockerfile`：复用 `prebuild_client.Dockerfile`，改 URL 为 `https://download.zotero.org/client/release/5.0.96.3/Zotero-5.0.96.3_win-x86_64-setup.exe`
 - [ ] `clientbuildtest_win7.Dockerfile`
 - [ ] 改 `bin/build-local.sh`：加 `WIN7=1` 分支
 - [ ] 加错误码 10/11/12/13 处理
+- [ ] **A' 主路径**：在 `prebuild_client_win7.Dockerfile` 内集成 XPI 解包+`resource/config.js` sed 注入+`makensis` 重打包流水线（详见 §6.5）
+- [ ] 实机验证：拉一份 5.0.96.3 setup.exe → 解 → 注入 → makensis 重打包 → 在 Win7 SP1 装 → 启 Zotero → `about:config` 查 `extensions.zotero.<id>.API_URL` 已是内网地址
 
-### M2：探测 + 打包（2 天）
+### M2：探测 + 打包（3 天，含 C 兜底注入）
 
 - [ ] 写 `bin/detect-win-version.sh`
 - [ ] 改 `bin/package-for-intranet.sh`：纳入 `clients/{win10plus,win7}/`，生成 `clients-manifest.json`
 - [ ] 写 `tests/bin/*.bats` 与 `tests/integration/*.bats`
 - [ ] `bats tests/` 全绿
+- [ ] **C 兜底路径**：写 `bin/set-zotero-dataserver.ps1`（含 PS 2.0 fallback 警告），A' 失败时由运维 push 调用
+- [ ] 改 `bin/deploy-intranet.sh`：检测 Win7 + A' 注入失败时，提示"将推送 PowerShell 兜底脚本"
 
 ### M3：文档 + E2E（2 天）
 
@@ -388,7 +523,7 @@ curl -X POST "$DATASERVER/items" \
 - [ ] Vagrant 拉 Win7 SP1 镜像，跑 7.5 E2E 清单
 - [ ] 跑 dataserver 协议兼容测试
 
-**总工期：8 工作日（≈ 1.5 周）**
+**总工期：10 工作日（≈ 2 周）**
 
 ## 9. 风险评估
 
@@ -402,6 +537,10 @@ curl -X POST "$DATASERVER/items" \
 | R6 | 5.0 ↔ 8.0 字段集差异致覆盖丢数据 | MEDIUM | 低 | Win10 端少字段 | dataserver 端加 5.0 客户端只写不覆盖（业务侧） |
 | R7 | 5.0.96.3 维护冻结，数月后协议升级断 5.0 客户端 | HIGH | 长期 | 5.0 同步失效 | 文档声明"5.0 客户端冻结于 2026-06-07 协议版本" |
 | R8 | CI 构建超时（5.0.96.3 依赖老 Node/Python） | MEDIUM | 中 | CI 红 | 独立 `win7-build` workflow，timeout 30min |
+| R9 | 5.0.96.3 setup.exe 内 NSIS 内部布局与官方不一致（5.0 时代有多个 minor 变体） | MEDIUM | 中 | `find ... -name "zotero@chnm.org.xpi"` 找不到 → 退出码 12 | 多路径候选（distribution/extensions/, App/Zotero/distribution/extensions/）+ 实机验证 5.0.96.3 唯一 tag |
+| R10 | `makensis` 在 Linux 容器内重打包 Windows NSIS 安装包失败（路径/编码问题） | MEDIUM | 中 | A' 注入失败 | Dockerfile 选 `iurt-the-catalyst/nsis:3.09` 镜像；失败时保留 `installer.nsi` 与中间产物供调试 |
+| R11 | Zotero 5.0 启动时校验 XPI 完整性（hash 比对） | LOW | 低 | 注入后的 XPI 被 Zotero 拒载，dataserver 仍为 zotero.org | M1 实机验证 + 用 `prefs.js` 注入双保险（如 XPI 校验） |
+| R12 | PowerShell 兜底路径在 Win7 SP1 默认 PS 2.0 下 `System.IO.Compression` 缺失 | LOW | 中 | C 路径无法使用 | 检测 PS 版本 < 5.0 时给出明确错误，引导安装 WMF 5.1 或重新跑 A' 构建 |
 
 ## 10. 回滚方案
 
@@ -435,6 +574,8 @@ git checkout develop -- .gitmodules
 | 用户文档 | `docs/user-manual/09-win7-installation.md` |
 | 本设计稿 | `docs/superpowers/specs/2026-06-07-win7-compatibility-design.md` |
 | 测试目录 | `tests/{bin,integration,submodule}/` |
+| A' XPI 注入脚本 | `prebuild_client_win7.Dockerfile` 内 inline（解 7z + sed + 7z + makensis） |
+| C 兜底 PowerShell | `bin/set-zotero-dataserver.ps1` |
 
 ### 11.2 调研依据
 
@@ -449,3 +590,4 @@ git checkout develop -- .gitmodules
 - **2026-06-07**：用 submodule 而非 subtree/fork。
 - **2026-06-07**：5.0.96.3 固定，不再跟随 6.0+ 更新（避免无止境的 backport）。
 - **2026-06-07**：不在 dataserver 端加 5.0 兼容代码（保持上游兼容）。
+- **2026-06-07**：dataserver URL 注入选 A'（构建期 XPI 重打包 + makensis）+ C（部署后 PowerShell 兜底）双保险路径，不用 B（NSIS post-install，侵入 5.0 子模块）与 D（启动器+env，需 fork 5.0 源码）。
