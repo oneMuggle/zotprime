@@ -26,8 +26,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /build
 
 # 1. 拉官方 5.0.96.3 Windows setup.exe
+# 注: 5.0 时代官方安装包名为 Zotero-${VERSION}_setup.exe (无 _win-x86_64 后缀)
+#     8.0+ 才有 _win-x86_64 后缀
 RUN curl -L --fail-with-body -o /tmp/zotero-setup.exe \
-    "https://download.zotero.org/client/release/5.0/Zotero-${WIN7_VERSION}_win-x86_64-setup.exe" \
+    "https://download.zotero.org/client/release/5.0.96.3/Zotero-${WIN7_VERSION}_setup.exe" \
     || { echo "[FATAL] Failed to download 5.0.96.3 setup.exe" >&2; exit 11; }
 
 # 2. 7z 解 NSIS 自解压包
