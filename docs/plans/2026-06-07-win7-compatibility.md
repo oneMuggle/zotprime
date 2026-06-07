@@ -173,6 +173,8 @@ Expected: `client/zotero-client-win7/version` 内容类似 `5.0.96.3.SOURCE`。
 Run: `cat client/zotero-client-win7/version`
 Expected: `5.0.96.3.SOURCE`
 
+> 注：5.0.96.3 时代 zotero-client 仓库没有 `version` 文件（`version` 文件是 c55ef8714 之后才加的），验证用 `git show 5.0.96.3:install.rdf | grep em:version` 替代。
+
 ## Task 1.4: 提交 PR#1
 
 **Files:**
