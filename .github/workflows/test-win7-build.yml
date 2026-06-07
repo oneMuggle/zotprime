@@ -34,6 +34,28 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
+      - name: Rewrite git:// -> https:// for nested submodules
+        # 5.0.96.3 era nested submodules (zotero-schema, bundled-styles,
+        # translators, csl-locales, zotero-word-*-integration, etc.) reference
+        # `git://github.com/...` URLs, but the GitHub Actions runner cannot
+        # connect to port 9418 (git:// has been deprecated by GitHub).
+        # git's insteadOf rewrites the URL on every fetch/clone — transparent
+        # to .gitmodules and does not modify the submodule refs.
+        run: |
+          git config --global url."https://github.com/".insteadOf "git://github.com/"
+          git config --global url."https://".insteadOf "git://"
+          # If a previous step in the workflow already tried to clone and
+          # left .git/modules dirs in a partial state, clean them so the
+          # rewrite takes effect.
+          for path in client/zotero-client-win7 client/zotero-standalone-build-win7; do
+            if [ -d "$path/.git" ]; then
+              echo "[INFO] Cleaning $path for re-init under URL rewrite"
+              rm -rf "$path"
+            fi
+          done
+          # Re-init from the main repo's .gitmodules
+          git submodule update --init --recursive
+
       - name: Install test tools
         run: |
           sudo apt-get update
@@ -88,6 +110,21 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 1
+
+      - name: Rewrite git:// -> https:// for nested submodules
+        # 5.0.96.3 era nested submodules reference `git://github.com/...`
+        # URLs which the Actions runner cannot reach. Use git's insteadOf
+        # URL rewrite to transparently redirect all git operations to https.
+        run: |
+          git config --global url."https://github.com/".insteadOf "git://github.com/"
+          git config --global url."https://".insteadOf "git://"
+          for path in client/zotero-client-win7 client/zotero-standalone-build-win7; do
+            if [ -d "$path/.git" ]; then
+              echo "[INFO] Cleaning $path for re-init under URL rewrite"
+              rm -rf "$path"
+            fi
+          done
+          git submodule update --init --recursive
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
