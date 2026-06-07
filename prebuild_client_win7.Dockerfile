@@ -75,4 +75,4 @@ RUN set -euo pipefail \
     && ls -la /dist/
 
 FROM scratch AS artifact
-COPY --from=0 /dist/ /
+COPY --from=base /dist/ /
