@@ -12,6 +12,7 @@ setup() {
 
 @test "recognizes Windows 7 from ver output" {
     run bash "$SCRIPT" 2>/dev/null <<< "Microsoft Windows [Version 6.1.7601]"
+    echo "DEBUG test-1: status=$status, output='$output'" >&2
     [ "$status" -eq 0 ]
     [ "$output" = "win7" ]
 }

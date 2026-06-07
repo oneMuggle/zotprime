@@ -34,6 +34,8 @@ WORKDIR /build
 # 1. 拉官方 5.0.96.3 Windows setup.exe
 # 注: 5.0 时代官方安装包名为 Zotero-${VERSION}_setup.exe (无 _win-x86_64 后缀)
 #     8.0+ 才有 _win-x86_64 后缀
+# 用 bash 不用 sh (Debian 镜像默认 sh=dash, 不支持 set -o pipefail)
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN curl -L --fail-with-body -o /tmp/zotero-setup.exe \
     "https://download.zotero.org/client/release/5.0.96.3/Zotero-${WIN7_VERSION}_setup.exe" \
     || { echo "[FATAL] Failed to download 5.0.96.3 setup.exe" >&2; exit 11; }
@@ -65,8 +67,6 @@ RUN set -euo pipefail \
 # 4. 重新打包 setup.exe (保留 Mozilla runtime, A' XPI 注入由 C 路径在安装后做)
 RUN set -euo pipefail \
     && mkdir -p /dist \
-    && cd /opt/zotero_build \
-    && 7z a -mx=9 -t7z -bb1 -bso0 /tmp/zotero-repack.7z . \
     && cp /tmp/zotero-setup.exe "/dist/Zotero-${WIN7_VERSION}_win-x86_64-setup.exe" \
     && sha256sum "/dist/Zotero-${WIN7_VERSION}_win-x86_64-setup.exe" \
         | awk '{print $1}' \
