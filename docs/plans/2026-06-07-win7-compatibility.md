@@ -38,7 +38,7 @@ Spec 覆盖 6 个独立组件（C1-C6）、4 个里程碑（M0-M3）、总工期
 | `bin/detect-win-version.sh` | 探测 Windows 版本号 → win7/win8/win10/win11/xp/unknown |
 | `bin/set-zotero-dataserver.ps1` | A' 失败时的 PowerShell 兜底注入 |
 | `docs/technical/18-win7-compatibility.md` | 开发者视角的兼容性矩阵 + 构建命令 |
-| `docs/user-manual/09-win7-installation.md` | 用户视角的 Win7 安装步骤 |
+| `docs/user-manual/10-win7-installation.md` | 用户视角的 Win7 安装步骤 |
 | `tests/bin/detect-win-version.bats` | detect 脚本单元测试 |
 | `tests/bin/build-local.bats` | build-local.sh 单元测试 |
 | `tests/integration/win7-build.bats` | Win7 集成测试（仅 `win7-build` 标记时跑） |
@@ -1219,7 +1219,7 @@ vagrant up
 ## 18.6 相关文件
 
 - 规范：`docs/superpowers/specs/2026-06-07-win7-compatibility-design.md`
-- 用户手册：`docs/user-manual/09-win7-installation.md`
+- 用户手册：`docs/user-manual/10-win7-installation.md`
 - 实施计划：`docs/plans/2026-06-07-win7-compatibility.md`
 - 子模块：
   - `client/zotero-standalone-build-win7` @ `5.0.96.3`
@@ -1230,14 +1230,14 @@ vagrant up
   - `bin/build-local.sh`（增 `WIN7=1` 开关）
 ```
 
-## Task 5.2: 写 docs/user-manual/09-win7-installation.md
+## Task 5.2: 写 docs/user-manual/10-win7-installation.md
 
 **Files:**
-- Create: `docs/user-manual/09-win7-installation.md`
+- Create: `docs/user-manual/10-win7-installation.md`
 
 - [ ] **Step 1: 写文档**
 
-Create `docs/user-manual/09-win7-installation.md` with:
+Create `docs/user-manual/10-win7-installation.md` with:
 ```markdown
 # 9. Windows 7 安装说明
 
@@ -1339,7 +1339,7 @@ Run: `ls docs/user-manual/ 2>/dev/null`
 如果存在 `docs/user-manual/README.md` 或 `docs/user-manual.md`，在目录条目列表中加：
 
 ```markdown
-| 9 | [Windows 7 安装](09-win7-installation.md) | Win7 SP1 用户从下载到验证的完整步骤 |
+| 9 | [Windows 7 安装](10-win7-installation.md) | Win7 SP1 用户从下载到验证的完整步骤 |
 ```
 
 ## Task 5.5: 跑端到端 checklist（Vagrant Win7 VM）
@@ -1382,7 +1382,7 @@ git -c user.email=claude@local -c user.name=claude commit -m "docs(win7): record
 
 **Files:**
 - Create: `docs/technical/18-win7-compatibility.md`
-- Create: `docs/user-manual/09-win7-installation.md`
+- Create: `docs/user-manual/10-win7-installation.md`
 - Modify: `docs/technical/README.md` (或 `docs/technical-manual.md`)
 - Modify: `docs/user-manual/README.md` (或 `docs/user-manual.md`)
 - Create: `docs/notes/2026-06-07_win7-e2e-checklist.md`
@@ -1397,7 +1397,7 @@ Expected: 全部 pass
 Run:
 ```bash
 cd /home/fz/project/zotprime
-git add docs/technical/18-win7-compatibility.md docs/user-manual/09-win7-installation.md \
+git add docs/technical/18-win7-compatibility.md docs/user-manual/10-win7-installation.md \
         docs/technical/README.md docs/user-manual/README.md \
         docs/notes/2026-06-07_win7-e2e-checklist.md
 git -c user.email=claude@local -c user.name=claude commit -m "docs(win7): add Win7 compatibility and installation guides"

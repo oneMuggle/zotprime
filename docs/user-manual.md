@@ -20,7 +20,7 @@
 10. [附录](#10-附录)
 
 外部章节：
-- [Windows 7 安装 (feature/win7-compatibility)](09-win7-installation.md) — Win7 SP1 用户从下载到验证的完整步骤
+- [Windows 7 安装 (feature/win7-compatibility)](10-win7-installation.md) — Win7 SP1 用户从下载到验证的完整步骤
 
 ---
 
@@ -616,7 +616,7 @@ zotprime/
 | Admin 面板说明 | `docs/admin.md` | Admin 面板设置指南 |
 | 自定义 CA 证书 | `docs/custom-ca-certificate.md` | 企业网络证书配置 |
 | MicroK8s 部署 | `docs/K8s/MICROK8S.md` | K8s 部署详细步骤 |
-| Win7 安装 | `docs/user-manual/09-win7-installation.md` | Windows 7 SP1 客户端从下载到验证的完整步骤（feature/win7-compatibility） |
+| Win7 安装 | `docs/user-manual/10-win7-installation.md` | Windows 7 SP1 客户端从下载到验证的完整步骤（feature/win7-compatibility） |
 
 ### 10.5 获取帮助
 

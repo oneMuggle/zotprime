@@ -89,7 +89,7 @@ vagrant up
 ## 18.6 相关文件
 
 - 规范：`docs/superpowers/specs/2026-06-07-win7-compatibility-design.md`
-- 用户手册：`docs/user-manual/09-win7-installation.md`
+- 用户手册：`docs/user-manual/10-win7-installation.md`
 - 实施计划：`docs/plans/2026-06-07-win7-compatibility.md`
 - 子模块：
   - `client/zotero-standalone-build-win7` @ `5.0.96.3`
