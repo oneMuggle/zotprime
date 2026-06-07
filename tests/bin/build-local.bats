@@ -6,26 +6,28 @@ setup() {
     [ -f "$SCRIPT" ] || skip "build-local.sh not found"
 }
 
+# Extract the WIN7 block to a temp file (avoids nested quoting issues
+# when passing SCRIPT path into a child bash -c)
+extract_win7_block() {
+    local tmp
+    tmp=$(mktemp)
+    grep -A 30 '^WIN7=' "$SCRIPT" | head -30 > "$tmp"
+    echo "$tmp"
+}
+
 @test "WIN7=1 sources to win7 dockerfile selection" {
-    # Extract the WIN7 block and source it. Use process substitution so the
-    # variables stay in scope of the inner bash.
-    run bash -c "
-        set -e
-        source <(grep -A 30 '^WIN7=' '$SCRIPT' | head -30)
-        echo DOCKERFILE=\$DOCKERFILE
-        echo TARGET_TAG=\$TARGET_TAG
-    "
+    TMP=$(extract_win7_block)
+    run bash -c "source $TMP; echo DOCKERFILE=\$DOCKERFILE; echo TARGET_TAG=\$TARGET_TAG"
+    rm -f "$TMP"
     [ "$status" -eq 0 ]
     [[ "$output" == *"prebuild_client_win7.Dockerfile"* ]]
     [[ "$output" == *"win7-5.0.96.3"* ]]
 }
 
 @test "WIN7 unset defaults to modern client" {
-    run bash -c "
-        set -e
-        source <(grep -A 30 '^WIN7=' '$SCRIPT' | head -30)
-        echo DOCKERFILE=\$DOCKERFILE
-    "
+    TMP=$(extract_win7_block)
+    run bash -c "source $TMP; echo DOCKERFILE=\$DOCKERFILE"
+    rm -f "$TMP"
     [ "$status" -eq 0 ]
     [[ "$output" == *"prebuild_client.Dockerfile"* ]]
 }
@@ -46,9 +48,7 @@ setup() {
 
 @test "exits 12 path exists in script (verified by content grep)" {
     # The exit 12 path is exercised by sourcing the script and confirming
-    # that the REQUIRED_VERSION=5.0.96.3 assignment is present.
-    # (The actual exit-12 trigger requires corrupting the version, which
-    # is done in M2 real-world via admin script; CI just confirms intent.)
+    # that the EXPECTED_VER=5.0.96.3.SOURCE assignment is present.
     run grep -c 'EXPECTED_VER="5.0.96.3.SOURCE"' "$SCRIPT"
     [ "$status" -eq 0 ]
     [ "$output" -ge 1 ]

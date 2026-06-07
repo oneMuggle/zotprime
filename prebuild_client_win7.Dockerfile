@@ -29,6 +29,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zip \
     && rm -rf /var/lib/apt/lists/*
 
+# Need a CMD so `docker create` can produce a container (used to extract /dist/)
+CMD ["/bin/sh", "-c", "while true; do sleep 3600; done"]
+
 WORKDIR /build
 
 # 1. 拉官方 5.0.96.3 Windows setup.exe
