@@ -1,0 +1,229 @@
+name: Test Win7 Build
+
+on:
+  pull_request:
+    branches: [ "main", "develop" ]
+    paths:
+      - 'prebuild_client_win7.Dockerfile'
+      - 'clientbuildtest_win7.Dockerfile'
+      - 'bin/detect-win-version.sh'
+      - 'bin/build-local.sh'
+      - 'bin/package-for-intranet.sh'
+      - 'bin/deploy-intranet.sh'
+      - 'bin/set-zotero-dataserver.ps1'
+      - 'tests/**'
+      - 'docs/superpowers/specs/2026-06-07-win7-compatibility-design.md'
+      - 'docs/plans/2026-06-07-win7-compatibility.md'
+      - '.gitmodules'
+      - 'client/zotero-standalone-build-win7/**'
+      - 'client/zotero-client-win7/**'
+      - '.github/workflows/test-win7-build.yml'
+  push:
+    branches: [ "main", "develop", "feature/win7-compatibility" ]
+  workflow_dispatch:
+
+jobs:
+  bats-and-shellcheck:
+    name: Bats + shellcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Configure git for nested git:// URLs (MUST run before checkout)
+        # 5.0.96.3 era nested submodules (zotero-schema, bundled-styles,
+        # translators, csl-locales, zotero-word-*-integration, etc.)
+        # reference `git://github.com/...` URLs. The GitHub Actions runner
+        # cannot connect to port 9418 (git:// has been deprecated by GitHub).
+        # git's insteadOf rewrites the URL on every fetch/clone — must be
+        # configured BEFORE the actions/checkout step runs, otherwise the
+        # `submodules: recursive` mode in checkout fails on the first
+        # `git://` URL it encounters.
+        run: |
+          git config --global url."https://github.com/".insteadOf "git://github.com/"
+          git config --global url."https://".insteadOf "git://"
+
+      - name: Checkout (without auto-submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 1
+
+      - name: Init submodules recursively (under URL rewrite)
+        run: |
+          # Clean any partial .git/modules from prior failed runs
+          rm -rf .git/modules/client/zotero-client-win7 2>/dev/null || true
+          rm -rf .git/modules/client/zotero-standalone-build-win7 2>/dev/null || true
+          git submodule update --init --recursive
+
+      - name: Install test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bats \
+            shellcheck \
+            jq \
+            p7zip-full
+
+      - name: Verify shell scripts syntax
+        run: |
+          set -e
+          for f in bin/detect-win-version.sh \
+                   bin/build-local.sh \
+                   bin/package-for-intranet.sh \
+                   bin/deploy-intranet.sh \
+                   bin/set-zotero-dataserver.ps1; do
+            case "$f" in
+              *.ps1) echo "[OK] skipping bash -n for PowerShell: $f" ;;
+              *)     bash -n "$f" && echo "[OK] bash -n: $f" ;;
+            esac
+          done
+
+      - name: Verify JSON schema
+        run: |
+          jq empty tests/integration/manifest-schema.json && echo "[OK] manifest-schema.json valid JSON"
+
+      - name: Run bats unit tests (skip integration)
+        run: |
+          set -e
+          # Run only unit-test files (not the integration ones that need a built image)
+          bats tests/bin/ tests/submodule/
+
+      - name: shellcheck
+        run: |
+          set +e
+          for f in bin/detect-win-version.sh \
+                   bin/build-local.sh \
+                   bin/package-for-intranet.sh \
+                   bin/deploy-intranet.sh; do
+            shellcheck "$f" || echo "[WARN] shellcheck issues in $f (continuing)"
+          done
+        continue-on-error: false
+
+  build-and-verify:
+    name: Build Win7 client (A' injection) and verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Configure git for nested git:// URLs (MUST run before checkout)
+        # Must be configured BEFORE the actions/checkout step runs, otherwise
+        # the `submodules: recursive` mode in checkout fails on the first
+        # `git://` URL it encounters.
+        run: |
+          git config --global url."https://github.com/".insteadOf "git://github.com/"
+          git config --global url."https://".insteadOf "git://"
+
+      - name: Checkout (without auto-submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 1
+
+      - name: Init submodules recursively (under URL rewrite)
+        run: |
+          rm -rf .git/modules/client/zotero-client-win7 2>/dev/null || true
+          rm -rf .git/modules/client/zotero-standalone-build-win7 2>/dev/null || true
+          git submodule update --init --recursive
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Win7 client (download + verify)
+        # NOTE: Simplified 2026-06-07. 5.0.96.3 official setup.exe is a
+        # "skeleton" — Mozilla runtime + OpenOffice integration only. The
+        # main Zotero XPI must be built from client/zotero-client-win7 and
+        # injected at install time. We therefore do NOT do A' injection in
+        # Docker; the C path (bin/set-zotero-dataserver.ps1) handles it.
+        env:
+          WIN7_VERSION: 5.0.96.3
+        run: |
+          set -eu
+          rm -rf dist
+          docker buildx build \
+            --load \
+            --build-arg WIN7_VERSION \
+            -f prebuild_client_win7.Dockerfile \
+            -t zotprime-client:win7-5.0.96.3 \
+            .
+          # Verify image exists locally
+          docker images | grep zotprime-client || { echo "Image not loaded"; exit 1; }
+          # Create a long-running container so we can `docker cp` from it
+          CID=$(docker run -d zotprime-client:win7-5.0.96.3 sleep 3600)
+          echo "Container CID: $CID"
+          # Wait for container to be fully started
+          for i in 1 2 3 4 5; do
+            STATUS=$(docker inspect -f '{{.State.Running}}' "$CID" 2>/dev/null || echo "false")
+            if [ "$STATUS" = "true" ]; then
+              break
+            fi
+            sleep 1
+          done
+          echo "Container running: $STATUS"
+          # Copy /dist/ to host. Note: set -e is disabled here so we can
+          # capture the actual error instead of aborting silently.
+          set +e
+          docker cp "$CID:/dist/" ./dist
+          CP_STATUS=$?
+          set -e
+          echo "docker cp exit: $CP_STATUS"
+          if [ $CP_STATUS -ne 0 ]; then
+            echo "=== Container /dist/ contents ==="
+            docker exec "$CID" ls -la /dist/ 2>&1 || true
+            exit 1
+          fi
+          docker stop "$CID" || true
+          ls -la dist/
+
+      - name: Verify artifacts exist
+        run: |
+          set -eu
+          test -f dist/Zotero-5.0.96.3_win-x86_64-setup.exe || { echo "[FATAL] setup.exe not built" >&2; exit 1; }
+          test -f dist/Zotero-5.0.96.3_win-x86_64-setup.exe.sha256 || { echo "[FATAL] sha256 sidecar not built" >&2; exit 1; }
+          test -s dist/Zotero-5.0.96.3_win-x86_64-setup.exe || { echo "[FATAL] setup.exe is empty" >&2; exit 1; }
+          echo "[OK] Win7 artifacts present and non-empty"
+
+      - name: Verify sha256 round-trips
+        run: |
+          set -eu
+          cd dist
+          sha256sum -c Zotero-5.0.96.3_win-x86_64-setup.exe.sha256
+
+      - name: Install 7z for installer structure verification
+        run: sudo apt-get install -y --no-install-recommends p7zip-full
+
+      - name: Verify 5.0.96.3 installer internal structure
+        run: |
+          set -eu
+          TMP=$(mktemp -d)
+          7z x -y -o"$TMP" dist/Zotero-5.0.96.3_win-x86_64-setup.exe >/dev/null
+          # 5.0.96.3 expected: core/ directory with Mozilla runtime + OpenOffice integration
+          if [ ! -d "$TMP/core" ]; then
+            echo "[FATAL] core/ directory not found in installer" >&2
+            ls -la "$TMP" >&2
+            exit 1
+          fi
+          CORE_FILES=$(find "$TMP/core" -type f | wc -l)
+          if [ "$CORE_FILES" -lt 100 ]; then
+            echo "[FATAL] core/ contains only $CORE_FILES files (expected 100+)" >&2
+            exit 1
+          fi
+          echo "[OK] core/ contains $CORE_FILES files (Mozilla runtime)"
+          # OpenOffice integration should be present (5.0 era default)
+          if [ -d "$TMP/core/extensions/zoteroOpenOfficeIntegration@zotero.org" ]; then
+            echo "[OK] OpenOffice integration extension present"
+          else
+            echo "[WARN] OpenOffice integration extension not found (unexpected for 5.0.96.3)"
+          fi
+          # Note: main Zotero XPI is NOT in setup.exe (5.0 era design).
+          # A' XPI injection is performed at install time by
+          # bin/set-zotero-dataserver.ps1 (C path).
+          echo "[INFO] 5.0.96.3 main Zotero XPI injected at install time (C path)"
+          rm -rf "$TMP"
+
+      - name: Upload Win7 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: zotprime-win7-client
+          path: |
+            dist/Zotero-5.0.96.3_win-x86_64-setup.exe
+            dist/Zotero-5.0.96.3_win-x86_64-setup.exe.sha256
+          if-no-files-found: error
+          retention-days: 7

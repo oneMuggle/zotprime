@@ -11,6 +11,57 @@ set -e
 VER="${IMAGE_TAG:-v3.2.0}"
 PREFIX="uniuu/zotprime"
 
+# === Win7 兼容性开关 (feature/win7-compatibility) ===
+WIN7="${WIN7:-0}"
+DIST_DIR="${DIST_DIR:-./dist}"
+
+log_info() { echo "[INFO] $*"; }
+log_error() { echo "[ERROR] $*" >&2; }
+
+if [ "$WIN7" = "1" ]; then
+    DOCKERFILE="prebuild_client_win7.Dockerfile"
+    TARGET_TAG="zotprime-client:win7-5.0.96.3"
+    REQUIRED_VERSION="5.0.96.3"
+    TEST_DOCKERFILE="clientbuildtest_win7.Dockerfile"
+    log_info "Win7 build mode: $DOCKERFILE (version $REQUIRED_VERSION)"
+
+    # 子模块检查：5.0.96.3 时代没有 version 文件，从 install.rdf 提取
+    if [ ! -d "client/zotero-standalone-build-win7" ] || [ ! -d "client/zotero-client-win7" ]; then
+        log_error "WIN7=1 but win7 submodules not initialized. Run:"
+        log_error "  git submodule update --init client/zotero-standalone-build-win7 client/zotero-client-win7"
+        exit 10
+    fi
+
+    # 校验 client 子模块版本
+    # 5.0.96.3 时代没有 version 文件（c55ef8714 之后才加），fallback 用 install.rdf
+    # NOTE: 5.0.96.3 这个特定版本上，`version` 文件永远为空，因此 install.rdf
+    # 这条分支是今天唯一会被执行的路径；保留 version 文件检查是为了将来子模块
+    # 升级后仍能直接工作。
+    ACTUAL_VER=$(cat client/zotero-client-win7/version 2>/dev/null | tr -d '\n' || echo "")
+    EXPECTED_VER="${REQUIRED_VERSION}.SOURCE"
+    if [ "$ACTUAL_VER" != "$EXPECTED_VER" ]; then
+        ACTUAL_VER=$(git -C client/zotero-client-win7 show 5.0.96.3:install.rdf 2>/dev/null \
+            | grep -oE 'em:version>[^<]+' | sed 's/em:version>//' | tr -d '\n' || echo "")
+        if [ "$ACTUAL_VER" != "$EXPECTED_VER" ]; then
+            log_error "zotero-client-win7 version is '$ACTUAL_VER', expected '$EXPECTED_VER'"
+            log_error "  (checked both version file and install.rdf)"
+            exit 12
+        fi
+    fi
+else
+    DOCKERFILE="prebuild_client.Dockerfile"
+    TARGET_TAG="zotprime-client:latest"
+    REQUIRED_VERSION="8.0.1"
+    TEST_DOCKERFILE="clientbuildtest.Dockerfile"
+    log_info "Modern build mode: $DOCKERFILE (version $REQUIRED_VERSION)"
+fi
+
+# TODO(win7): DOCKERFILE/TARGET_TAG/TEST_DOCKERFILE/DIST_DIR are computed above
+# (in both the WIN7=1 and WIN7=0 branches) but the `docker build` invocation
+# that consumes them is not in this script's current scope. The script only
+# builds the server-side images (dataserver, db, elasticsearch, ...). See plan
+# PR#5 follow-up. (Pre-existing issue: the WIN7=0 branch has the same gap.)
+
 echo "Building ZotPrime images (tag: ${VER})..."
 
 cd "$(dirname "$0")/../stack"

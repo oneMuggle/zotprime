@@ -23,6 +23,9 @@
 13. [二次开发](#13-二次开发)
 14. [故障排查](#14-故障排查)
 
+外部章节：
+- [Win7 兼容性 (feature/win7-compatibility)](18-win7-compatibility.md) — Windows 7 SP1 客户端兼容方案、构建命令、限制声明
+
 ---
 
 ## 1. 系统架构
