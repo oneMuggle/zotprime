@@ -126,19 +126,20 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Win7 client (A' injection pipeline)
+      - name: Build Win7 client (download + verify)
+        # NOTE: Simplified 2026-06-07. 5.0.96.3 official setup.exe is a
+        # "skeleton" — Mozilla runtime + OpenOffice integration only. The
+        # main Zotero XPI must be built from client/zotero-client-win7 and
+        # injected at install time. We therefore do NOT do A' injection in
+        # Docker; the C path (bin/set-zotero-dataserver.ps1) handles it.
         env:
           WIN7_VERSION: 5.0.96.3
-          HOST_DS: "http://zotprime.local:8080/"
-          HOST_ST: "ws://zotprime.local:8081/"
         run: |
           set -eu
           mkdir -p dist
           docker buildx build \
             --load \
             --build-arg WIN7_VERSION \
-            --build-arg HOST_DS \
-            --build-arg HOST_ST \
             -f prebuild_client_win7.Dockerfile \
             -t zotprime-client:win7-5.0.96.3 \
             .
@@ -162,44 +163,37 @@ jobs:
           cd dist
           sha256sum -c Zotero-5.0.96.3_win-x86_64-setup.exe.sha256
 
-      - name: Install 7z for A' injection verification
+      - name: Install 7z for installer structure verification
         run: sudo apt-get install -y --no-install-recommends p7zip-full
 
-      - name: Verify A' injection (XPI contains injected dataserver URL)
+      - name: Verify 5.0.96.3 installer internal structure
         run: |
           set -eu
           TMP=$(mktemp -d)
           7z x -y -o"$TMP" dist/Zotero-5.0.96.3_win-x86_64-setup.exe >/dev/null
-          XPI=$(find "$TMP" -name 'zotero@chnm.org.xpi' | head -1)
-          if [ -z "$XPI" ]; then
-            echo "[FATAL] zotero@chnm.org.xpi not found in installer" >&2
-            find "$TMP" -name '*.xpi' | head -5 >&2
+          # 5.0.96.3 expected: core/ directory with Mozilla runtime + OpenOffice integration
+          if [ ! -d "$TMP/core" ]; then
+            echo "[FATAL] core/ directory not found in installer" >&2
+            ls -la "$TMP" >&2
             exit 1
           fi
-          echo "[OK] Found XPI: $XPI"
-          XPI_TMP=$(mktemp -d)
-          7z x -y -o"$XPI_TMP" "$XPI" >/dev/null
-          CONFIG="$XPI_TMP/resource/config.js"
-          if [ ! -f "$CONFIG" ]; then
-            echo "[FATAL] resource/config.js not in XPI" >&2
-            find "$XPI_TMP" -name '*.js' | head -10 >&2
+          CORE_FILES=$(find "$TMP/core" -type f | wc -l)
+          if [ "$CORE_FILES" -lt 100 ]; then
+            echo "[FATAL] core/ contains only $CORE_FILES files (expected 100+)" >&2
             exit 1
           fi
-          echo "--- config.js (first 20 lines) ---"
-          head -20 "$CONFIG"
-          echo "--- injection check ---"
-          if grep -q "zotprime.local" "$CONFIG"; then
-            echo "[OK] A' injection: zotprime.local found in config.js"
+          echo "[OK] core/ contains $CORE_FILES files (Mozilla runtime)"
+          # OpenOffice integration should be present (5.0 era default)
+          if [ -d "$TMP/core/extensions/zoteroOpenOfficeIntegration@zotero.org" ]; then
+            echo "[OK] OpenOffice integration extension present"
           else
-            echo "[FATAL] A' injection FAILED: 'zotprime.local' not in config.js" >&2
-            exit 1
+            echo "[WARN] OpenOffice integration extension not found (unexpected for 5.0.96.3)"
           fi
-          if grep -q "https://api.zotero.org" "$CONFIG"; then
-            echo "[FATAL] Original API URL not replaced: https://api.zotero.org still present" >&2
-            exit 1
-          fi
-          echo "[OK] Original https://api.zotero.org is gone (A' replaced it)"
-          rm -rf "$TMP" "$XPI_TMP"
+          # Note: main Zotero XPI is NOT in setup.exe (5.0 era design).
+          # A' XPI injection is performed at install time by
+          # bin/set-zotero-dataserver.ps1 (C path).
+          echo "[INFO] 5.0.96.3 main Zotero XPI injected at install time (C path)"
+          rm -rf "$TMP"
 
       - name: Upload Win7 artifacts
         uses: actions/upload-artifact@v4
