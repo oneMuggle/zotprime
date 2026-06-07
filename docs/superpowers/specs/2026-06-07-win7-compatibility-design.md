@@ -69,7 +69,7 @@ zotprime (分支: feature/win7-compatibility)
 │   ├── technical/
 │   │   └── 18-win7-compatibility.md # ★ 新增章节
 │   └── user-manual/
-│       └── 09-win7-installation.md  # ★ 新增章节
+│       └── 10-win7-installation.md  # ★ 新增章节
 └── tests/                            # ★ 新增目录
     ├── bin/
     │   ├── detect-win-version.bats
@@ -130,7 +130,7 @@ Docker 构建 (prebuild_client_win7.Dockerfile)
 | C2 | Win7 客户端源码镜像 | `client/zotero-client-win7/` | 同步 `zotero-client` @ 5.0.96.3 同期 commit | git submodule | `cat version` |
 | C3 | Win7 专用 Dockerfile | `prebuild_client_win7.Dockerfile` + `clientbuildtest_win7.Dockerfile` | 拉取并打 5.0.96.3 Windows 安装包 | C1, C2, Docker | `docker build` 产出 .exe |
 | C4 | 构建开关 + 探测脚本 | `bin/build-local.sh`（增 `WIN7=1`）+ `bin/detect-win-version.sh`（新增） | 决定构建哪个客户端 + 按 Windows 版本选安装包 | C3, `os` 命令 | shellcheck + bats |
-| C5 | 内网部署包/文档 | `bin/package-for-intranet.sh`（改）+ `clients-manifest.json`（新）+ `docs/technical/18-win7-compatibility.md`（新）+ `docs/user-manual/09-win7-installation.md`（新） | 打包两个客户端 + 写明 Win7 安装步骤 | C3, C4 | 文档链接有效、脚本退出码 0 |
+| C5 | 内网部署包/文档 | `bin/package-for-intranet.sh`（改）+ `clients-manifest.json`（新）+ `docs/technical/18-win7-compatibility.md`（新）+ `docs/user-manual/10-win7-installation.md`（新） | 打包两个客户端 + 写明 Win7 安装步骤 | C3, C4 | 文档链接有效、脚本退出码 0 |
 | C6 | dataserver URL 注入（双保险） | `prebuild_client_win7.Dockerfile` 内的 XPI 解包+改+`makensis` 重打包（A' 主路径） + `bin/set-zotero-dataserver.ps1`（C 兜底路径） | 构建期主注入 + 部署后兜底注入 | C3, 7z, makensis, PowerShell 5.x | 构建产物 .exe 装到 Win7 后同步 dataserver 正确 |
 
 ### 4.1 C1 + C2 取舍：submodule 而非 subtree / fork
@@ -230,7 +230,8 @@ Schema 校验：`tests/integration/manifest-schema.json`（JSON Schema draft-07�
 | 10 | ENV_MISSING | WIN7=1 但子模块未初始化 | "请先执行 git submodule update --init ..." |
 | 11 | DOCKER_BUILD_FAIL_V2 | 同 1，区分 bash 层与 docker 层 | 同 1 |
 | 12 | SUBMODULE_VERSION | 子模块 ref 不在预期 commit | 同 3 |
-| 13 | SIG_FAIL_V2 | 同 2 | 同 2 |
+| 13 | BUILDER_MISSING_NSI | prebuild_client_win7.Dockerfile 中 repack 阶段找不到 `*.nsi` 文件 | "NSIS installer script (.nsi) not found in extracted 5.0.96.3 setup.exe; refusing to build. Re-extract or pin to a different 5.0.x tag." |
+| 14 | SIG_FAIL_V2 | （保留）未来代码签名步骤专用 | "Code-signing step failed; SIGNTOOL may be missing or cert expired." |
 | 20 | INTRANET_PACKAGE_FAIL | 缺任一客户端产物 | "请先运行 WIN7=1 bin/build-local.sh 与默认构建" |
 | 30 | WIN_VERSION_UNSUPPORTED | detect 输出 unknown | "无法识别 Windows 版本，请联系运维手动选包" |
 | 31 | INTEGRITY_FAIL | sha256 校验失败 | "安装包校验失败，请重新下载" |
@@ -518,7 +519,7 @@ curl -X POST "$DATASERVER/items" \
 ### M3：文档 + E2E（2 天）
 
 - [ ] `docs/technical/18-win7-compatibility.md`
-- [ ] `docs/user-manual/09-win7-installation.md`
+- [ ] `docs/user-manual/10-win7-installation.md`
 - [ ] 更新 `docs/technical/README.md` 与 `docs/user-manual/README.md` 章节目录
 - [ ] Vagrant 拉 Win7 SP1 镜像，跑 7.5 E2E 清单
 - [ ] 跑 dataserver 协议兼容测试
@@ -571,7 +572,7 @@ git checkout develop -- .gitmodules
 | 内网部署 | `bin/deploy-intranet.sh` |
 | 包清单 | `clients-manifest.json` |
 | 技术文档 | `docs/technical/18-win7-compatibility.md` |
-| 用户文档 | `docs/user-manual/09-win7-installation.md` |
+| 用户文档 | `docs/user-manual/10-win7-installation.md` |
 | 本设计稿 | `docs/superpowers/specs/2026-06-07-win7-compatibility-design.md` |
 | 测试目录 | `tests/{bin,integration,submodule}/` |
 | A' XPI 注入脚本 | `prebuild_client_win7.Dockerfile` 内 inline（解 7z + sed + 7z + makensis） |
