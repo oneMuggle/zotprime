@@ -73,6 +73,6 @@ RUN set -euo pipefail \
         > "/dist/Zotero-${WIN7_VERSION}_win-x86_64-setup.exe.sha256" \
     && echo "[OK] Build complete: /dist/Zotero-${WIN7_VERSION}_win-x86_64-setup.exe" \
     && ls -la /dist/
-
-FROM scratch AS artifact
-COPY --from=base /dist/ /
+# NOTE: We do not use a `FROM scratch AS artifact` stage. CI extracts /dist/
+# via `docker create + docker cp` from the base image, which requires a
+# working /bin/sh and CMD (scratch has neither).
