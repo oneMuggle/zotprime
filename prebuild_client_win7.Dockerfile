@@ -71,9 +71,8 @@ RUN set -euo pipefail \
 RUN set -euo pipefail \
     && mkdir -p /dist \
     && cp /tmp/zotero-setup.exe "/dist/Zotero-${WIN7_VERSION}_win-x86_64-setup.exe" \
-    && sha256sum "/dist/Zotero-${WIN7_VERSION}_win-x86_64-setup.exe" \
-        | awk '{print $1}' \
-        > "/dist/Zotero-${WIN7_VERSION}_win-x86_64-setup.exe.sha256" \
+    && (cd /dist && sha256sum "Zotero-${WIN7_VERSION}_win-x86_64-setup.exe" \
+        > "Zotero-${WIN7_VERSION}_win-x86_64-setup.exe.sha256") \
     && echo "[OK] Build complete: /dist/Zotero-${WIN7_VERSION}_win-x86_64-setup.exe" \
     && ls -la /dist/
 # NOTE: We do not use a `FROM scratch AS artifact` stage. CI extracts /dist/
