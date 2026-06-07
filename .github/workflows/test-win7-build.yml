@@ -136,19 +136,39 @@ jobs:
           WIN7_VERSION: 5.0.96.3
         run: |
           set -eu
-          mkdir -p dist
+          rm -rf dist
           docker buildx build \
             --load \
             --build-arg WIN7_VERSION \
             -f prebuild_client_win7.Dockerfile \
             -t zotprime-client:win7-5.0.96.3 \
             .
-          # Extract /dist/ via a throwaway container. Using a long-sleep
-          # command so the container starts and stays alive long enough
-          # for `docker cp` to complete.
-          CID=$(docker run -d --rm zotprime-client:win7-5.0.96.3 sleep 3600)
+          # Verify image exists locally
+          docker images | grep zotprime-client || { echo "Image not loaded"; exit 1; }
+          # Create a long-running container so we can `docker cp` from it
+          CID=$(docker run -d zotprime-client:win7-5.0.96.3 sleep 3600)
           echo "Container CID: $CID"
-          docker cp "$CID":/dist/ ./dist/
+          # Wait for container to be fully started
+          for i in 1 2 3 4 5; do
+            STATUS=$(docker inspect -f '{{.State.Running}}' "$CID" 2>/dev/null || echo "false")
+            if [ "$STATUS" = "true" ]; then
+              break
+            fi
+            sleep 1
+          done
+          echo "Container running: $STATUS"
+          # Copy /dist/ to host. Note: set -e is disabled here so we can
+          # capture the actual error instead of aborting silently.
+          set +e
+          docker cp "$CID:/dist/" ./dist
+          CP_STATUS=$?
+          set -e
+          echo "docker cp exit: $CP_STATUS"
+          if [ $CP_STATUS -ne 0 ]; then
+            echo "=== Container /dist/ contents ==="
+            docker exec "$CID" ls -la /dist/ 2>&1 || true
+            exit 1
+          fi
           docker stop "$CID" || true
           ls -la dist/
 

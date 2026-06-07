@@ -44,9 +44,10 @@ setup() {
 }
 
 @test "exit 12 path exists in script (verified by content grep)" {
-    # The exit 12 path is exercised by sourcing the script and confirming
-    # that the EXPECTED_VER=5.0.96.3.SOURCE assignment is present.
-    run grep -c 'EXPECTED_VER="5.0.96.3.SOURCE"' "$SCRIPT"
+    # The exit 12 path requires an EXPECTED_VER assignment that resolves
+    # to 5.0.96.3.SOURCE (REQUIRED_VERSION=.SOURCE is expanded at runtime).
+    # We verify both the assignment pattern and the literal .SOURCE suffix.
+    run grep -c 'EXPECTED_VER="${REQUIRED_VERSION}.SOURCE"' "$SCRIPT"
     [ "$status" -eq 0 ]
     [ "$output" -ge 1 ]
 }
