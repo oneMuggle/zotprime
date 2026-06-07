@@ -6,45 +6,48 @@ setup() {
 }
 
 @test "recognizes Windows 7 from ver output" {
-    run bash -c "echo 'Microsoft Windows [Version 6.1.7601]' | $SCRIPT"
+    run bash "$SCRIPT" <<< "Microsoft Windows [Version 6.1.7601]"
     [ "$status" -eq 0 ]
     [ "$output" = "win7" ]
 }
 
 @test "recognizes Windows 8 from ver output" {
-    run bash -c "echo 'Microsoft Windows [Version 6.3.9600]' | $SCRIPT"
+    run bash "$SCRIPT" <<< "Microsoft Windows [Version 6.3.9600]"
     [ "$status" -eq 0 ]
     [ "$output" = "win8" ]
 }
 
 @test "recognizes Windows 10 from ver output (build 19045)" {
-    run bash -c "echo 'Microsoft Windows [Version 10.0.19045]' | $SCRIPT"
+    run bash "$SCRIPT" <<< "Microsoft Windows [Version 10.0.19045]"
     [ "$status" -eq 0 ]
     [ "$output" = "win10" ]
 }
 
 @test "recognizes Windows 11 from ver output (build >= 22000)" {
-    run bash -c "echo 'Microsoft Windows [Version 10.0.22621]' | $SCRIPT"
+    run bash "$SCRIPT" <<< "Microsoft Windows [Version 10.0.22621]"
     [ "$status" -eq 0 ]
     [ "$output" = "win11" ]
 }
 
 @test "recognizes Windows XP from ver output" {
-    run bash -c "echo 'Microsoft Windows [Version 5.1.2600]' | $SCRIPT"
+    run bash "$SCRIPT" <<< "Microsoft Windows [Version 5.1.2600]"
     [ "$status" -eq 0 ]
     [ "$output" = "xp" ]
 }
 
 @test "returns unknown for unrecognized version" {
-    run bash -c "echo 'Microsoft Windows [Version 3.1]' | $SCRIPT"
+    run bash "$SCRIPT" <<< "Microsoft Windows [Version 3.1]"
     [ "$status" -eq 1 ]
     [ "$output" = "unknown" ]
 }
 
-@test "exits 2 when stdin is empty (TTY mode without --probe)" {
-    # /dev/null 给空 stdin
-    run bash -c "$SCRIPT < /dev/null"
-    # 脚本会走到 ! [ -t 0 ] 判 false (因为 < /dev/null 重定向不算 TTY)
-    # 但 VER_LINE 为空 → exit 2
+@test "exits 2 when stdin is empty" {
+    run bash "$SCRIPT" < /dev/null
     [ "$status" -eq 2 ]
+}
+
+@test "handles Win11 edge case (build 21999 = win10, not win11)" {
+    run bash "$SCRIPT" <<< "Microsoft Windows [Version 10.0.21999]"
+    [ "$status" -eq 0 ]
+    [ "$output" = "win10" ]
 }
