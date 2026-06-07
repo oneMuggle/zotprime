@@ -37,9 +37,18 @@ RUN 7z x -y -o/opt/zotero_build /tmp/zotero-setup.exe \
     || { echo "[FATAL] 7z failed to extract NSIS package" >&2; exit 11; }
 
 # 3. 定位 Zotero 扩展 XPI（多路径候选，适配 5.0 时代不同安装布局）
-RUN ZOTERO_XPI=$(find /opt/zotero_build -name 'zotero@chnm.org.xpi' | head -1) \
+# 调试辅助：先列出解包结构，再找 XPI
+RUN echo "=== 7z 解包结构 (top 3 levels) ===" \
+    && find /opt/zotero_build -maxdepth 3 -type d | sort \
+    && echo "=== 寻找 XPI ===" \
+    && ZOTERO_XPI=$(find /opt/zotero_build -name 'zotero@chnm.org.xpi' | head -1) \
     && if [ -z "$ZOTERO_XPI" ]; then \
-         echo "[FATAL] zotero@chnm.org.xpi not found in /opt/zotero_build" >&2; exit 12; \
+         echo "[INFO] zotero@chnm.org.xpi 未找到, 5.0.96.3 可能用了非标准扩展目录命名" >&2; \
+         echo "[INFO] 查找所有 .xpi 文件:" >&2; \
+         find /opt/zotero_build -name '*.xpi' | head -10 >&2; \
+         echo "[INFO] 查找 Zotero 主程序目录里的 extensions/:" >&2; \
+         find /opt/zotero_build -path '*/extensions/*' -type f | head -20 >&2; \
+         echo "[FATAL] 找不到 zotero@chnm.org.xpi" >&2; exit 12; \
        fi \
     && echo "ZOTERO_XPI=$ZOTERO_XPI" > /tmp/xpi_path.env
 
