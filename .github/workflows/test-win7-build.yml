@@ -143,10 +143,13 @@ jobs:
             -f prebuild_client_win7.Dockerfile \
             -t zotprime-client:win7-5.0.96.3 \
             .
-          # Export artifacts out of the image
-          CID=$(docker create zotprime-client:win7-5.0.96.3)
+          # Extract /dist/ via a throwaway container. Using a long-sleep
+          # command so the container starts and stays alive long enough
+          # for `docker cp` to complete.
+          CID=$(docker run -d --rm zotprime-client:win7-5.0.96.3 sleep 3600)
+          echo "Container CID: $CID"
           docker cp "$CID":/dist/ ./dist/
-          docker rm "$CID"
+          docker stop "$CID" || true
           ls -la dist/
 
       - name: Verify artifacts exist
