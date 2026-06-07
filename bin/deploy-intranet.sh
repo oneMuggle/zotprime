@@ -360,6 +360,23 @@ main() {
     echo "    PHPMyAdmin:     http://${SERVER_IP}:8083/"
     echo "    MinIO Web UI:   http://${SERVER_IP}:9001/"
     echo ""
+
+    # 7. 客户端分发指引（feature/intranet-win7-integration）
+    #    main() 在 server 上跑, 无法直接探测 Win 客户端机器的 OS,
+    #    所以输出指引让运维人员按目标机器 OS 选客户端包分发.
+    if [ -d "intranet-package/clients/win10plus" ] || [ -d "intranet-package/clients/win7" ]; then
+        echo "  客户端安装包 (按目标机器 OS 选):"
+        if [ -d "intranet-package/clients/win10plus" ]; then
+            echo "    Win10 / Win11 → intranet-package/clients/win10plus/Zotero-8.0.1_win-x86_64-setup.exe"
+        fi
+        if [ -d "intranet-package/clients/win7" ]; then
+            echo "    Win7 / Win8.1  → intranet-package/clients/win7/Zotero-5.0.96.3_win-x86_64-setup.exe"
+        fi
+        echo "    (Win7 客户端需先装 VC++ 2013 Redist, 详见 docs/user-manual/10-win7-installation.md)"
+        echo "    客户端连 dataserver 时, dataserver URL 改成本机:  http://${SERVER_IP}:8080/"
+        echo ""
+    fi
+
     echo "  常用命令:"
     echo "    查看状态:  docker compose ps"
     echo "    查看日志:  docker compose logs -f"
