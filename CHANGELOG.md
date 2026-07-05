@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [v0.3.0] - 2026-07-05
+
 ### Added
 - feat(portal): 内网部署支持 + 移除二维码 TOTP 二因素验证 (PR#9)
   - 登录/注册成功后直接进入 `/portal`，不再走 `/verify` 二维码设置流程
@@ -17,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   - `iron-session` 8.x 默认宽容忽略 cookie 中未声明字段，旧会话兼容无额外迁移代码
   - 顺手修复 14 个 pre-existing lint 错误（`any` → `unknown`、`require()` → `import`、修 import 顺序）
   - 新增用户手册章节 `docs/user-manual/50-portal-intranet.md`
+- docs(user-manual): add 40-client-features.md — end-user功能全景与内网部署特殊说明
 
 ### Fixed
 - fix(dataserver): include password column in /admin/users response (PR#9)
