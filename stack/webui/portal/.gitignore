@@ -42,3 +42,8 @@ next-env.d.ts
 
 # database
 data/*.json
+
+# playwright (e2e)
+/playwright-report/
+/test-results/
+/.playwright-cache/
