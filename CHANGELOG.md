@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [v0.4.0] - 2026-07-05
+
+### Added
+- test(portal): 引入 Playwright E2E 框架 (`stack/webui/portal/tests/e2e/portal.spec.ts` 11 步覆盖 happy path + auto-migrate + 错误路径)
+- test(portal): 11 步 e2e test config (`playwright.config.ts` + `package.json` scripts `e2e` / `e2e:install`)
+- ci(e2e): push-all-images.yml `e2e-portal` job 集成 Playwright
+- feat(dataserver): 新增 `POST /api/auth/login` 端点(plain password → `password_verify` + MD5 auto-migrate → `{success, userID, apiKey}`)
+- feat(portal): login 改用新端点,删除 `crypto.createHash('md5')` + `users.find()` 全表扫描 + `getUserKeys` 二次调用
+- docs(notes): F-1 + F-2 + F-3 + F-4 + F-5 + F-6 完成归档
+- docs(superpowers): 写两份 spec/plan 文档(portal no-2FA + dataserver bcrypt)
+
+### Changed
+- security(dataserver): `createUser` 从 `MD5(?)` 改为 `password_hash(?, PASSWORD_BCRYPT)`
+- security(dataserver): `listUsers` 移除 `password` 字段返回(防 hash 暴露给 super-user)
+- security(dataserver): `users.password` 从 `char(40)` 扩到 `varchar(60)` 兼容 MD5(32) 与 bcrypt(60)
+- chore(portal): 删除 `types/zotero-api-client.d.ts` dead-code
+- chore(portal): 清理未引用 deps `bcrypt` / `@types/bcrypt` / `@types/nodemailer`
+- ci(e2e): 加上 `API_SUPER_TOKEN` + `MARIADB_ROOT_PASSWORD` secrets 给 e2e step 8 (auto-migrate 测需要)
+
+### Fixed
+- pre-existing dataserver bug: `GET /admin/users` 不返回 password 字段导致 login 永远 401(已在 v0.3.0 PR#9 修)
+- pre-existing: portal 端 `crypto.createHash('md5')` 客户端 hash,改为服务端 bcrypt 校验
+- pre-existing: portal login 全表扫描 `users.find()` 改为专用 `/api/auth/login` 端点
+- pre-existing: 14 个 lint 错误(`any`→`unknown`, `require()`→`import`, import 顺序)
+
+### Known Limitations
+- dataserver `db_update.sh` **不自动跑** (entrypoint.sh 不调用)。新部署需要在 entrypoint 或 init 步骤显式跑 `db_update.sh`,或手动 `docker exec ... ALTER TABLE users MODIFY password varchar(60)`
+- portal `session.email` 在 F-1+F-3 改造后为空字符串(auth endpoint 不返回 email)
+- e2e step 7 (rate limiting) 仍未实际强制,config.yaml 配置 `auth_requests_per_minute: 5` 未被代码读取
+- e2e step 8 (auto-migrate 测) 用 `docker exec mariadb` 直接改 DB,本地 dev OK,CI runner 需要 docker socket 访问
+
 ## [v0.3.0] - 2026-07-05
 
 ### Added
