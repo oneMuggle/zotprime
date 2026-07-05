@@ -100,33 +100,20 @@ const user = users.find((u: any) => u.username === username);
 
 ---
 
-## F-5 [LOW] chore(portal): 删除 dead-code `types/zotero-api-client.d.ts`
+## F-5 [DONE 2026-07-05] chore(portal): 删除 dead-code `types/zotero-api-client.d.ts`
 
-**问题:** `stack/webui/portal/types/zotero-api-client.d.ts` 在仓库从未被引用。grep 验证:`grep -r 'zotero-api-client' app/ lib/ types/` 仅文件本身命中。该文件是 ambient module declaration,无 runtime 影响,但仍是 dead code。
+**解决:** commit `37fda0e2`
+- 1 个 dead-code 文件删除
+- grep 验证前后一致:无任何源文件 import zotero-api-client
+- 不考虑 types/index.ts 拆分了(范围控制,YAGNI 友好)
 
-**建议方案:**
-- 删除 `stack/webui/portal/types/zotero-api-client.d.ts`
-- 同时考虑将 `types/index.ts` 拆为命名文件(`types/user.ts` / `types/session.ts` / `types/zotero.ts`)
+## F-6 [DONE 2026-07-05] chore(portal): 清理未引用 deps `bcrypt` / `@types/bcrypt` / `@types/nodemailer`
 
-**优先级:** LOW — 纯 cleanup
-
----
-
-## F-6 [LOW] chore(portal): 清理未引用 deps `bcrypt` / `@types/bcrypt` / `@types/nodemailer`
-
-**背景:** PR#9 显式保留 bcrypt 系列在 package.json(spec §1: 不清理 package.json 中已存在但未引用的 deps)。
-
-**问题:**
-- 占 `node_modules` 体积
-- 扩大 security audit 表面(transitive deps 都潜在 CVE)
-- lockfile 膨胀
-
-**建议方案:**
-1. grep 全仓库确认无引用后 `npm uninstall bcrypt @types/bcrypt @types/nodemailer`
-2. 同时审计其它未引用依赖
-3. 使用 `overrides` 字段锁住关键 transitive deps 版本
-
-**优先级:** LOW
+**解决:** commit `37fda0e2` (与 F-5 同 commit)
+- `npm uninstall bcrypt @types/bcrypt @types/nodemailer`
+- grep 验证:portal 中无任何 import
+- package-lock.json 减少 54 行
+- rebuild portal 镜像 (新 SHA: 78f15...);端到端验证 register/login happy path 通过
 
 ---
 
