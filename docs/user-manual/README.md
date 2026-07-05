@@ -10,13 +10,15 @@
 | 10 | [Win7 安装说明](10-win7-installation.md) | Win7/8.1 用户 |
 | 20 | [管理员速查](20-administrator-guide.md) | 系统管理员 |
 | 30 | [客户端分发指南](30-distribution.md) | 部门 IT 协调员 |
+| 40 | [客户端功能与操作](40-client-features.md) | 已登录的研究人员 |
+| 50 | [Portal 内网部署](50-portal-intranet.md) | 内网环境下 Portal 的部署、登录流程与环境变量。 |
 
 ## 按角色阅读
 
 | 你是 | 阅读路径 |
 |------|----------|
-| 普通研究人员 (Win10/11) | [00](00-quickstart.md) |
-| 普通研究人员 (Win7/8.1) | [10](10-win7-installation.md) |
+| 普通研究人员 (Win10/11) | [00](00-quickstart.md) → [40](40-client-features.md) |
+| 普通研究人员 (Win7/8.1) | [10](10-win7-installation.md) → [40](40-client-features.md) |
 | 部门 IT 协调员 | [30](30-distribution.md) → [00](00-quickstart.md) → [10](10-win7-installation.md) |
 | 系统管理员 | [20](20-administrator-guide.md) + [技术手册](../technical/README.md) |
 

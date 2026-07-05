@@ -1,17 +1,18 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/session';
 import { getUserGroups, getGroupItems } from '@/lib/api';
+import { ZoteroGroup } from '@/types';
 
 export async function GET() {
   try {
     const session = await requireAuth();
-    
+
     // Get user's groups
-    const groups = await getUserGroups(session.userId, session.apiKey);
-    
+    const groups = (await getUserGroups(session.userId, session.apiKey)) as ZoteroGroup[];
+
     // Fetch items from all groups
     const groupsWithItems = await Promise.all(
-      groups.map(async (group: any) => {
+      groups.map(async (group: ZoteroGroup) => {
         try {
           const items = await getGroupItems(group.id, session.apiKey);
           return {

@@ -228,20 +228,21 @@ class AdminController extends ApiController {
 	
 	private function listUsers() {
 		try {
-			$sql = "SELECT u.userID, u.username, e.email, u.role 
-					FROM users u 
-					LEFT JOIN users_email e ON u.userID = e.userID 
+			$sql = "SELECT u.userID, u.username, u.password, e.email, u.role
+					FROM users u
+					LEFT JOIN users_email e ON u.userID = e.userID
 					WHERE u.role != 'deleted'
 					ORDER BY u.userID";
 			$rows = Zotero_WWW_DB_1::query($sql);
-			
+
 			$users = [];
 			foreach ($rows as $row) {
 				$users[] = [
-					'userID' => $row['userID'],
+					'userID'   => $row['userID'],
 					'username' => $row['username'],
-					'email' => $row['email'],
-					'enabled' => ($row['role'] == 'normal')
+					'password' => $row['password'],
+					'email'    => $row['email'],
+					'enabled'  => ($row['role'] == 'normal'),
 				];
 			}
 			

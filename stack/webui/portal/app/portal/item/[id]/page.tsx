@@ -5,21 +5,21 @@ import Link from 'next/link';
 
 async function getItemData(itemId: string) {
   const session = await getSession();
-  
+
   if (!session.apiKey) {
     redirect('/login');
   }
 
   const [groupId, itemKey] = itemId.split(':');
-  
+
   if (!groupId || !itemKey) {
     return null;
   }
-  
+
   try {
     const item = await getItem(parseInt(groupId), itemKey, session.apiKey);
     return item;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -72,7 +72,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
             <div className="mb-4">
               <h2 className="font-semibold text-gray-700 mb-2">Authors</h2>
               <p className="text-gray-800">
-                {item.data.creators.map((c: any) => 
+                {item.data.creators.map((c) =>
                   c.name || `${c.firstName} ${c.lastName}`
                 ).join(', ')}
               </p>
@@ -113,7 +113,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
             <div className="mb-4">
               <h2 className="font-semibold text-gray-700 mb-2">Tags</h2>
               <div className="flex flex-wrap gap-2">
-                {item.data.tags.map((tag: any, idx: number) => (
+                {item.data.tags.map((tag, idx) => (
                   <span
                     key={idx}
                     className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm"

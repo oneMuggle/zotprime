@@ -54,6 +54,7 @@ nav:
       - 10. Win7 安装: user-manual/10-win7-installation.md
       - 20. 管理员速查: user-manual/20-administrator-guide.md
       - 30. 客户端分发: user-manual/30-distribution.md
+      - 50. Portal 内网部署: user-manual/50-portal-intranet.md
   - 技术手册:
       - 总览: technical/README.md
       - 15. Ubuntu 环境准备: technical/15-ubuntu-server-setup.md
