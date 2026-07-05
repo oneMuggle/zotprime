@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
-import { generateTOTPUri, generateQRCode } from '@/lib/totp';
 import { getConfig } from '@/lib/config';
-import { getTOTPSecret } from '@/lib/db';
+import { getUserKeys } from '@/lib/api';
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,34 +28,25 @@ export async function POST(request: NextRequest) {
     // Verify password (dataserver stores MD5 hashes)
     const crypto = require('crypto');
     const passwordHash = crypto.createHash('md5').update(password).digest('hex');
-    
+
     if (user.password !== passwordHash) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
-    // Fetch existing TOTP secret from database
-    const totpRecord = await getTOTPSecret(username);
-    
-    if (!totpRecord) {
-      return NextResponse.json({ error: 'TOTP not configured' }, { status: 400 });
+    // Fetch API key for user (replaces previous TOTP step)
+    const apiKey = await getUserKeys(user.userID);
+    if (!apiKey) {
+      return NextResponse.json({ error: 'No API key found' }, { status: 500 });
     }
 
     const session = await getSession();
     session.userId = user.userID;
     session.username = user.username;
     session.email = user.email;
-    session.totpSecret = totpRecord.secret;
-    session.totpVerified = false;
+    session.apiKey = apiKey;
     await session.save();
 
-    // Only return QR code if not yet verified
-    if (!totpRecord.verified) {
-      const uri = generateTOTPUri(username, totpRecord.secret);
-      const qrCode = await generateQRCode(uri);
-      return NextResponse.json({ qrCode, secret: totpRecord.secret, showQR: true });
-    }
-
-    return NextResponse.json({ showQR: false });
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json({ error: 'Login failed' }, { status: 500 });
