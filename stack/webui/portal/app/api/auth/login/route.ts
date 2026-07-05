@@ -1,62 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
-import { generateTOTPUri, generateQRCode } from '@/lib/totp';
 import { getConfig } from '@/lib/config';
-import { getTOTPSecret } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
     const { username, password } = await request.json();
 
     const config = getConfig();
-    const response = await fetch(`${config.dataserver.url}/admin/users`, {
+
+    // Call dataserver's dedicated auth endpoint.
+    // Dataserver handles password_verify + MD5-to-bcrypt auto-migrate.
+    const response = await fetch(`${config.dataserver.url}/api/auth/login`, {
+      method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         'Authorization': `Bearer ${config.dataserver.api_super_token}`,
       },
+      body: JSON.stringify({ username, password }),
     });
 
+    if (response.status === 401) {
+      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
+    }
+    if (response.status === 400) {
+      const err = await response.json().catch(() => ({}));
+      return NextResponse.json(
+        { error: err.error || 'Bad request' },
+        { status: 400 }
+      );
+    }
     if (!response.ok) {
-      return NextResponse.json({ error: 'Login failed' }, { status: 401 });
+      return NextResponse.json({ error: 'Login failed' }, { status: 500 });
     }
 
-    const users = await response.json();
-    const user = users.find((u: any) => u.username === username);
+    const result = await response.json();
 
-    if (!user) {
-      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
-    }
-
-    // Verify password (dataserver stores MD5 hashes)
-    const crypto = require('crypto');
-    const passwordHash = crypto.createHash('md5').update(password).digest('hex');
-    
-    if (user.password !== passwordHash) {
-      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
-    }
-
-    // Fetch existing TOTP secret from database
-    const totpRecord = await getTOTPSecret(username);
-    
-    if (!totpRecord) {
-      return NextResponse.json({ error: 'TOTP not configured' }, { status: 400 });
+    if (!result.success || !result.userID || !result.apiKey) {
+      return NextResponse.json({ error: 'Login failed' }, { status: 500 });
     }
 
     const session = await getSession();
-    session.userId = user.userID;
-    session.username = user.username;
-    session.email = user.email;
-    session.totpSecret = totpRecord.secret;
-    session.totpVerified = false;
+    session.userId = result.userID;
+    session.username = username;
+    // Email is not exposed by the auth endpoint; consumers that need it
+    // can fetch it via a subsequent admin call (out of scope here).
+    session.email = '';
+    session.apiKey = result.apiKey;
     await session.save();
 
-    // Only return QR code if not yet verified
-    if (!totpRecord.verified) {
-      const uri = generateTOTPUri(username, totpRecord.secret);
-      const qrCode = await generateQRCode(uri);
-      return NextResponse.json({ qrCode, secret: totpRecord.secret, showQR: true });
-    }
-
-    return NextResponse.json({ showQR: false });
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json({ error: 'Login failed' }, { status: 500 });

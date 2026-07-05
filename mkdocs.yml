@@ -1,0 +1,70 @@
+site_name: ZotPrime Docs
+site_description: ZotPrime 自托管 Zotero 内网部署文档
+site_url: https://github.com/oneMuggle/zotprime
+repo_url: https://github.com/oneMuggle/zotprime
+repo_name: oneMuggle/zotprime
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: 切换到夜间模式
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: 切换到日间模式
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+plugins:
+  - search
+
+nav:
+  - 首页: README.md
+  - 用户手册:
+      - 总览: user-manual/README.md
+      - 00. 快速上手: user-manual/00-quickstart.md
+      - 10. Win7 安装: user-manual/10-win7-installation.md
+      - 20. 管理员速查: user-manual/20-administrator-guide.md
+      - 30. 客户端分发: user-manual/30-distribution.md
+      - 50. Portal 内网部署: user-manual/50-portal-intranet.md
+  - 技术手册:
+      - 总览: technical/README.md
+      - 15. Ubuntu 环境准备: technical/15-ubuntu-server-setup.md
+      - 16. 内网部署: technical/16-intranet-deployment.md
+      - 17. 内网离线包: technical/17-intranet-package.md
+      - 18. Win7 兼容性: technical/18-win7-compatibility.md
+      - 19. 运维手册: technical/19-operations-manual.md
+
+extra:
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/oneMuggle/zotprime

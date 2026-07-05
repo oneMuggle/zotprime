@@ -1,19 +1,20 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { getUserGroups, getGroupItems } from '@/lib/api';
+import { ZoteroGroup, ZoteroItem } from '@/types';
 import Link from 'next/link';
 
 async function getGroupsWithItems() {
   const session = await getSession();
-  
+
   if (!session.apiKey) {
     redirect('/login');
   }
 
-  const groups = await getUserGroups(session.userId, session.apiKey);
-  
+  const groups = (await getUserGroups(session.userId, session.apiKey)) as ZoteroGroup[];
+
   const groupsWithItems = await Promise.all(
-    groups.map(async (group: any) => {
+    groups.map(async (group: ZoteroGroup) => {
       try {
         const items = await getGroupItems(group.id, session.apiKey);
         return {
@@ -24,7 +25,7 @@ async function getGroupsWithItems() {
           },
           items,
         };
-      } catch (error) {
+      } catch {
         return {
           group: {
             id: group.id,
@@ -36,18 +37,27 @@ async function getGroupsWithItems() {
       }
     })
   );
-  
+
   return groupsWithItems;
+}
+
+interface GroupsWithItemsEntry {
+  group: {
+    id: number;
+    name: string;
+    type: string;
+  };
+  items: ZoteroItem[];
 }
 
 export default async function PortalPage() {
   const session = await getSession();
-  
+
   if (!session.apiKey) {
     redirect('/login');
   }
 
-  const groupsWithItems = await getGroupsWithItems();
+  const groupsWithItems: GroupsWithItemsEntry[] = await getGroupsWithItems();
 
   const handleLogout = async () => {
     'use server';
@@ -83,7 +93,7 @@ export default async function PortalPage() {
             </div>
           ) : (
             <div className="space-y-8">
-              {groupsWithItems.map((groupData: any) => (
+              {groupsWithItems.map((groupData) => (
                 <div key={groupData.group.id} className="bg-white rounded-lg shadow p-6">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-2xl font-bold text-gray-900">{groupData.group.name}</h3>
@@ -96,7 +106,7 @@ export default async function PortalPage() {
                     <p className="text-gray-700 text-center py-4">No items in this group yet.</p>
                   ) : (
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                      {groupData.items.map((item: any) => (
+                      {groupData.items.map((item) => (
                         <Link
                           key={item.key}
                           href={`/portal/item/${groupData.group.id}:${item.key}`}
@@ -105,10 +115,10 @@ export default async function PortalPage() {
                           <h4 className="font-semibold text-lg mb-2 line-clamp-2">
                             {item.data.title || 'Untitled'}
                           </h4>
-                          
+
                           {item.data.creators && item.data.creators.length > 0 && (
                             <p className="text-gray-800 text-sm mb-2 line-clamp-1">
-                              {item.data.creators.map((c: any) => 
+                              {item.data.creators.map((c) =>
                                 c.name || `${c.firstName} ${c.lastName}`
                               ).join(', ')}
                             </p>

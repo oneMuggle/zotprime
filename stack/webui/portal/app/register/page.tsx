@@ -43,9 +43,7 @@ export default function RegisterPage() {
         throw new Error(error.error || 'Registration failed');
       }
 
-      const result = await response.json();
-      sessionStorage.setItem('totp', JSON.stringify({ qrCode: result.qrCode, secret: result.secret }));
-      router.push('/verify');
+      router.push('/portal');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {

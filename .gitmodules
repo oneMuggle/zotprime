@@ -18,3 +18,11 @@
 [submodule "stack/stream-server/stream-server"]
 	path = stack/stream-server/stream-server
 	url = https://github.com/uniuuu/stream-server.git
+[submodule "client/zotero-standalone-build-win7"]
+	path = client/zotero-standalone-build-win7
+	url = https://github.com/uniuuu/zotero-standalone-build
+	branch = 5.0.96.3
+[submodule "client/zotero-client-win7"]
+	path = client/zotero-client-win7
+	url = https://github.com/uniuuu/zotero
+	branch = 5.0.96.3

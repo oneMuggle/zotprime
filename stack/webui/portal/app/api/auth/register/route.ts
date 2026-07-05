@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import bcrypt from 'bcrypt';
-import { createUser, createApiKey } from '@/lib/api';
 import { getSession } from '@/lib/session';
-import { generateTOTPSecret, generateTOTPUri, generateQRCode } from '@/lib/totp';
-import { setTOTPSecret } from '@/lib/db';
+import { createUser, createApiKey } from '@/lib/api';
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,25 +12,14 @@ export async function POST(request: NextRequest) {
     // Create API key for user
     const apiKey = await createApiKey(user.userID, 'Portal Access');
 
-    // Generate and store TOTP secret
-    const totpSecret = generateTOTPSecret();
-    await setTOTPSecret(username, totpSecret);
-
-    // Generate QR code for initial setup
-    const uri = generateTOTPUri(username, totpSecret);
-    const qrCode = await generateQRCode(uri);
-
-    // Store in session
     const session = await getSession();
     session.userId = user.userID;
     session.username = username;
     session.email = email;
     session.apiKey = apiKey;
-    session.totpSecret = totpSecret;
-    session.totpVerified = false;
     await session.save();
 
-    return NextResponse.json({ success: true, qrCode, secret: totpSecret });
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Registration error:', error);
     return NextResponse.json(

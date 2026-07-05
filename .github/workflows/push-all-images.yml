@@ -186,3 +186,126 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: uniuu/zotprime-portal:${{ env.VERSION }}
+
+  smoke-test:
+    name: Smoke test dataserver image (PHP 8.5)
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Pull dataserver image
+        run: docker pull uniuu/zotprime-dataserver:${{ env.VERSION }}
+
+      - name: Verify PHP 8.5 in dataserver
+        run: |
+          echo "Verifying uniuu/zotprime-dataserver:${{ env.VERSION }} contains PHP 8.5..."
+          docker create --name ds-smoke-test uniuu/zotprime-dataserver:${{ env.VERSION }}
+          docker cp ds-smoke-test:/usr/bin/php85 /tmp/php85
+          chmod +x /tmp/php85
+          /tmp/php85 -v | tee /tmp/php-version.txt
+          if ! grep -q "PHP 8.5" /tmp/php-version.txt; then
+            echo "::error::Dataserver image missing PHP 8.5 - build is broken"
+            docker rm -f ds-smoke-test
+            exit 1
+          fi
+          docker rm -f ds-smoke-test
+          echo "PHP 8.5 smoke test passed"
+
+      - name: Verify manifest includes linux/amd64
+        run: |
+          echo "Verifying dataserver image manifest contains linux/amd64..."
+          if ! docker buildx imagetools inspect uniuu/zotprime-dataserver:${{ env.VERSION }} | grep -q "linux/amd64"; then
+            echo "::error::Dataserver image manifest missing linux/amd64 platform"
+            exit 1
+          fi
+          echo "linux/amd64 manifest present"
+
+      - name: Verify all 13 image manifests
+        run: |
+          echo "Verifying all 13 image manifests..."
+          services=(dataserver db elasticsearch redis memcached minio miniomc localstack tinymceclean streamserver phpmyadmin admin portal)
+          for name in "${services[@]}"; do
+            if ! docker buildx imagetools inspect "uniuu/zotprime-${name}:${{ env.VERSION }}" >/dev/null 2>&1; then
+              echo "::error::Image uniuu/zotprime-${name}:${{ env.VERSION }} missing"
+              exit 1
+            fi
+          done
+          echo "All 13 image manifests verified"
+
+  e2e-portal:
+    name: E2E test Portal happy path
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: stack/webui/portal/package-lock.json
+
+      - name: Install portal dependencies
+        working-directory: stack/webui/portal
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: stack/webui/portal
+        run: npx playwright install --with-deps chromium
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Pull portal + dataserver images
+        run: |
+          docker pull uniuu/zotprime-portal:${{ env.VERSION }}
+          docker pull uniuu/zotprime-dataserver:${{ env.VERSION }}
+
+      - name: Copy env template for stack
+        run: cp .env_example .env || true
+
+      - name: Start dataserver + portal containers (portal profile)
+        run: |
+          docker compose --profile portal up -d zotprime-portal zotprime-dataserver zotprime-db
+
+      - name: Wait for portal HTTP 200 on /
+        run: |
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3045/ || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "Portal is ready (HTTP 200)"
+              exit 0
+            fi
+            echo "Waiting for portal (attempt $i/60, got $code)..."
+            sleep 5
+          done
+          echo "::error::Portal did not become ready on http://localhost:3045/ within 5 minutes"
+          docker compose --profile portal logs zotprime-portal || true
+          exit 1
+
+      - name: Run E2E tests
+        working-directory: stack/webui/portal
+        env:
+          PORTAL_BASE_URL: http://localhost:3045
+          API_SUPER_TOKEN: ${{ secrets.API_SUPER_TOKEN }}
+          MARIADB_ROOT_PASSWORD: ${{ secrets.MARIADB_ROOT_PASSWORD }}
+        run: npm run e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: stack/webui/portal/playwright-report/
+          retention-days: 7
+
+      - name: Tear down portal stack
+        if: always()
+        run: docker compose --profile portal down -v || true

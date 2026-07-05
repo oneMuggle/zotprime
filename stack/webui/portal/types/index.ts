@@ -9,8 +9,6 @@ export interface SessionData {
   username: string;
   email: string;
   apiKey: string;
-  totpSecret?: string;
-  totpVerified?: boolean;
 }
 
 export interface ZoteroGroup {
@@ -49,7 +47,7 @@ export interface ZoteroItem {
     date?: string;
     url?: string;
     tags?: Array<{ tag: string }>;
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 
