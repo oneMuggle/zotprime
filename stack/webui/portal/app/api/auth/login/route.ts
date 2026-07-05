@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as crypto from 'node:crypto';
 import { getSession } from '@/lib/session';
 import { getConfig } from '@/lib/config';
 import { getUserKeys } from '@/lib/api';
+
+interface DataserverUser {
+  userID: number;
+  username: string;
+  email: string;
+  password: string;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,15 +26,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Login failed' }, { status: 401 });
     }
 
-    const users = await response.json();
-    const user = users.find((u: any) => u.username === username);
+    const users = (await response.json()) as DataserverUser[];
+    const user = users.find((u) => u.username === username);
 
     if (!user) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
     // Verify password (dataserver stores MD5 hashes)
-    const crypto = require('crypto');
     const passwordHash = crypto.createHash('md5').update(password).digest('hex');
 
     if (user.password !== passwordHash) {

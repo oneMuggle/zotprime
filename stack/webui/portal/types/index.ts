@@ -47,7 +47,7 @@ export interface ZoteroItem {
     date?: string;
     url?: string;
     tags?: Array<{ tag: string }>;
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 
