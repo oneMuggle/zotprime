@@ -3,8 +3,10 @@
 # Images are tagged to match the docker-compose.yml image references.
 #
 # Usage:
-#   ./bin/build-local.sh                          # build with default tag v3.2.0
-#   IMAGE_TAG=my-custom ./bin/build-local.sh      # build with custom tag
+#   ./bin/build-local.sh                                # build with default tag v3.2.0
+#   IMAGE_TAG=my-custom ./bin/build-local.sh            # build with custom tag
+#   HOST_DS=http://10.0.0.5:8080/ ./bin/build-local.sh  # inject dataserver URL (Win10+)
+#   WIN7=1 ./bin/build-local.sh                         # build Win7 5.0.96.3 client
 
 set -e
 
@@ -14,6 +16,17 @@ PREFIX="uniuu/zotprime"
 # === Win7 兼容性开关 (feature/win7-compatibility) ===
 WIN7="${WIN7:-0}"
 DIST_DIR="${DIST_DIR:-./dist}"
+
+# === 客户端 dataserver URL 注入 (Win10+ 8.0.1) ===
+# 默认从 .env 读 SERVER_IP,缺省 127.0.0.1 (本地测试用)
+# 重要: 这是构建期注入,改 IP 需重新 build EXE
+# Win7 5.0.96.3 不在此注入 (setup.exe 是骨架,URL 由 PowerShell C 路径注入)
+if [ -f .env ]; then
+    ENV_SERVER_IP=$(grep -E '^SERVER_IP=' .env | head -1 | sed -E 's/^SERVER_IP=//; s/^["'\'']//; s/["'\'']$//')
+fi
+SERVER_IP="${SERVER_IP:-${ENV_SERVER_IP:-127.0.0.1}}"
+HOST_DS="${HOST_DS:-http://${SERVER_IP}:8080/}"
+HOST_ST="${HOST_ST:-ws://${SERVER_IP}:8081/}"
 
 log_info() { echo "[INFO] $*"; }
 log_error() { echo "[ERROR] $*" >&2; }
@@ -104,6 +117,49 @@ DOCKER_BUILDKIT=1 docker build -f admin/admin.Dockerfile -t ${PREFIX}-admin:${VE
 
 echo "[13/13] portal"
 DOCKER_BUILDKIT=1 docker build -f webui/webui.Dockerfile -t ${PREFIX}-portal:${VER} webui/
+
+# === 客户端构建 (Phase 3 PR#3) ===
+cd "$(dirname "$0")/.."  # 回到项目根 (prebuild_client*.Dockerfile 在此)
+mkdir -p "${DIST_DIR}"
+
+if [ "$WIN7" = "1" ]; then
+    # === Win7 5.0.96.3 客户端 ===
+    # 不在 Docker 内做 A' XPI 注入 (setup.exe 是骨架)
+    # URL 由 PowerShell C 路径在用户机器上注入 (bin/set-zotero-dataserver.ps1)
+    echo "[14/14] client (Win7 5.0.96.3, A' deferred → PowerShell C path)"
+    DOCKER_BUILDKIT=1 docker build -f prebuild_client_win7.Dockerfile -t zotprime-client:win7-5.0.96.3 .
+    WIN7_OUT="${DIST_DIR}/win7"
+    rm -rf "${WIN7_OUT}"
+    mkdir -p "${WIN7_OUT}"
+    WIN7_CONTAINER=$(docker create --name zp-client-win7 zotprime-client:win7-5.0.96.3)
+    docker cp "${WIN7_CONTAINER}:/dist/." "${WIN7_OUT}/"
+    docker rm -f "${WIN7_CONTAINER}" >/dev/null
+    log_info "  Win7 client EXE: ${WIN7_OUT}/Zotero-5.0.96.3_win-x86_64-setup.exe"
+    log_info "  ⚠ Win7 用户装机后需运行 PowerShell 注入 dataserver URL:"
+    log_info "    bin/set-zotero-dataserver.ps1 -DataServerUrl '$HOST_DS' -StreamServerUrl '$HOST_ST'"
+else
+    # === Win10+ 8.0.1 客户端 (构建期注入 dataserver URL) ===
+    # 使用 client.Dockerfile (3-stage: 改 config.mjs → npm build → dir_build -p w)
+    # 产出真正的 Windows EXE 在 app/staging/
+    echo "[14/14] client (Win10+ 8.0.1, build-time URL injection)"
+    log_info "  Injecting HOST_DS=$HOST_DS"
+    log_info "  Injecting HOST_ST=$HOST_ST"
+    WIN10_OUT="${DIST_DIR}/win10plus"
+    rm -rf "${WIN10_OUT}"
+    mkdir -p "${WIN10_OUT}"
+
+    # 注: client.Dockerfile 用 ARGs HOST_DS/HOST_ST (默认 localhost)
+    # 我们通过 --build-arg 覆盖
+    DOCKER_BUILDKIT=1 docker buildx build \
+        --build-arg HOST_DS="$HOST_DS" \
+        --build-arg HOST_ST="$HOST_ST" \
+        --build-arg MLW=w \
+        --output "type=local,dest=${WIN10_OUT}" \
+        --target export-stage \
+        -f client.Dockerfile .
+    log_info "  Win10+ client EXE: ${WIN10_OUT}/Zotero-8.0.1_win-x86_64-setup.exe"
+    log_info "  (full build, ~10-20 min)"
+fi
 
 echo ""
 echo "All images built. Start with: docker compose up -d"

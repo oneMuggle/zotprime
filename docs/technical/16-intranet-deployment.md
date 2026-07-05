@@ -296,3 +296,114 @@ docker compose logs zotprime-init
 - **离线打包:** [17-intranet-package.md](17-intranet-package.md) — docker save 导出
 - **客户端:** [18-win7-compatibility.md](18-win7-compatibility.md) — Win7 装机 + PowerShell 注入
 - **运维:** [19-operations-manual.md](19-operations-manual.md) — 备份/恢复/监控/故障排查
+
+## 16.11 客户端 IP 注入机制 (PR#3)
+
+> 客户端连接服务端有**两条路径**,分别对应 Win10+ 与 Win7 客户端。详见 [18-win7-compatibility.md](18-win7-compatibility.md) 的 Win7 兜底说明。
+
+### 16.11.1 Win10+ 8.0.1 — 构建期注入
+
+使用 `client.Dockerfile` (3-stage) 进行**完整的** Zotero Windows 客户端构建:
+
+| Stage | 工作 |
+|-------|------|
+| stage-1 | 修改 `client/zotero-client/resource/config.mjs` 中的 `api.zotero.org` 和 `stream.zotero.org` URL |
+| stage-2 | `npm run build` + `app/scripts/dir_build -p w` 产出 Windows 安装包 |
+| export-stage | 输出 `app/staging/Zotero-8.0.1_win-x86_64-setup.exe` |
+
+**关键 build args:**
+
+```bash
+HOST_DS="http://192.168.1.100:8080/"   # dataserver URL
+HOST_ST="ws://192.168.1.100:8081/"     # stream server URL
+MLW="w"                                # 平台:w=Windows, l=Linux
+```
+
+**自动从 `.env` 读 SERVER_IP**:
+
+`bin/build-local.sh` 默认从 `.env` 的 `SERVER_IP` 行提取,缺省 `127.0.0.1`(本地测试用):
+
+```bash
+# 1. 标准用法 — 从 .env 读 SERVER_IP
+./bin/build-local.sh
+
+# 2. 自定义 SERVER_IP (覆盖 .env)
+SERVER_IP=10.0.0.5 ./bin/build-local.sh
+
+# 3. 完全自定义 URL (覆盖 SERVER_IP)
+HOST_DS=http://10.0.0.5:8080/ HOST_ST=ws://10.0.0.5:8081/ ./bin/build-local.sh
+```
+
+**产出位置:**
+
+```
+dist/win10plus/Zotero-8.0.1_win-x86_64-setup.exe
+```
+
+### 16.11.2 Win7 5.0.96.3 — 安装后 PowerShell 注入 (A' 路径 deferred)
+
+5.0.96.3 时代的 setup.exe 是**骨架**(只含 Mozilla runtime + OpenOffice 集成),**主 Zotero XPI 不在 setup.exe 内**,因此 spec 描述的 "解 setup.exe → 改 XPI → 重打包" 的 A' 路径**在 5.0 时代不可行**。
+
+**当前实际做法:**
+1. `prebuild_client_win7.Dockerfile` 下载官方 5.0.96.3 setup.exe → 验证 → 重新打包输出
+2. 用户装机后,由 IT 在该机器跑 `bin/set-zotero-dataserver.ps1` 做 dataserver URL 注入(C 路径)
+
+**PowerShell 注入脚本功能 (`bin/set-zotero-dataserver.ps1`):**
+- 检查 PowerShell 版本(< 5.0 报错引导装 WMF 5.1)
+- 多路径候选定位 `zotero@chnm.org.xpi`
+- 备份原 XPI (`.bak.yyyyMMddHHmmss`)
+- 用 `System.IO.Compression` 解压 → 改 `resource/config.js` → 重打包
+- 替换 `https://api.zotero.org` → `$DataServerUrl`
+- 替换 `wss://stream.zotero.org` → `$StreamServerUrl`
+
+**用法:**
+```powershell
+cd C:\path\to\setup\folder
+.\set-zotero-dataserver.ps1 `
+    -DataServerUrl "http://192.168.1.100:8080/" `
+    -StreamServerUrl "ws://192.168.1.100:8081/"
+```
+
+### 16.11.3 限制与权衡
+
+| 限制 | 影响 | 缓解 |
+|------|------|------|
+| Win10+ IP 在构建期硬编码 | IP 改一次要重新 build EXE | 单机构场景够用;多机构需分别 build |
+| Win7 装机需 IT 跑一次 PS | 用户不能零接触部署 | 文档明确告知用户;IT 装机 runbook |
+| Win10+ `client.Dockerfile` 需 `client/zotero-client` 子模块 | 完整 build 10-20 分钟 | 本地开发可接受;CI 上跑就行 |
+
+### 16.11.4 PR#3 实测结果 (2026-07-05)
+
+**Win7 客户端构建:**
+
+```bash
+$ WIN7=1 ./bin/build-local.sh
+# ... [14/14] client (Win7 5.0.96.3)
+$ ls dist/win7/
+Zotero-5.0.96.3_win-x86_64-setup.exe      43466024 bytes
+Zotero-5.0.96.3_win-x86_64-setup.exe.sha256
+
+$ sha256sum dist/win7/Zotero-5.0.96.3_win-x86_64-setup.exe
+0e38eafce391f944784574a360db9902ac10f9630bcc2e21b114ede7ca32fc51
+```
+
+构建时间:**~10 秒**(只下载 + 解压 + 重打包,不改 XPI)
+
+**Win10+ 客户端构建:**
+
+```bash
+$ ./bin/build-local.sh
+# ... [14/14] client (Win10+ 8.0.1, build-time URL injection)
+$ ls dist/win10plus/
+Zotero-8.0.1_win-x86_64-setup.exe       # 由 client.Dockerfile (3-stage) 产出
+```
+
+构建时间:**~10-20 分钟**(完整 npm build + dir_build -p w)
+
+> **未在本次 PR 实测的原因:** `client.Dockerfile` 需要 `client/zotero-client` 子模块全量 `npm i`,受限于本会话时长。建议在 PR#6 (E2E 验证) 中实测完整链路。
+
+### 16.11.5 已知问题
+
+`stack/admin/admin.Dockerfile` 第 8 行的 `pecl install yaml` 偶发 PECL registry 503 错误("No releases available")。症状:`WIN7=1` 完整链路构建时,admin 阶段失败。已观察到的缓解:
+- 重试通常成功(registry 暂态问题)
+- 备用方案:`pecl install yaml-2.2.4`(锁定版本)
