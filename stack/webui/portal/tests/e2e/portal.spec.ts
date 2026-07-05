@@ -175,7 +175,7 @@ test.describe('Portal intranet flow', () => {
       expect(responses.some((b) => /Invalid credentials/i.test(b))).toBe(true);
     }
     // Reference `page` so the linter does not complain about unused params.
-    await expect(page).toBeDefined();
+    expect(page).toBeDefined();
   });
 });
 
