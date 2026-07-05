@@ -58,12 +58,12 @@ class AuthController extends Controller
         
         // Reset rate limit on successful login
         Redis::del("rate_limit:$ip");
-        
-        // Store temp session for 2FA
-        $request->session()->put('2fa_pending', true);
-        $request->session()->put('username', $username);
-        
-        return redirect()->route('2fa');
+
+        // Create authenticated session directly (2FA disabled)
+        $request->session()->put('authenticated', true);
+        $request->session()->put('last_activity', time());
+
+        return redirect()->route('dashboard');
     }
     
     public function show2fa(Request $request)
