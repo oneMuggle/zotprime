@@ -8,26 +8,31 @@
 
 ---
 
-## F-1 [HIGH] security(dataserver): unsalted MD5 password hashing
+## F-1 [DONE 2026-07-05] security(dataserver): unsalted MD5 password hashing
 
-**问题:** `stack/webui/portal/app/api/auth/login/route.ts` 用 `crypto.createHash('md5').update(password).digest('hex')`,与 dataserver 中存储的明文 MD5(`stack/dataserver/config/AdminController.php` users 表 `pass` 列)对比。
+**解决:** 分支 `feat/dataserver-bcrypt-auth`,7 commits:
+- `7e809ff5` feat(dataserver): bcrypt password hash + authLogin endpoint
+  - `createUser`: `MD5(?)` → `password_hash(?, PASSWORD_BCRYPT)`
+  - `listUsers`: 移除 `password` 字段返回(防 hash 暴露)
+  - 新增 `authLoginAction()` (public) + `authenticate()` (private)
+- `e0daef9e` fix(dataserver): backtick `keys` table name in authLogin SQL
+- `07db240f` feat(dataserver): route `POST /api/auth/login`
+- `60e67e21` feat(dataserver): extend `users.password` to `varchar(60)`
+- `0c6fd91e` feat(portal): login uses new endpoint, deletes MD5 logic
+- `041dc294` test(portal): 4 e2e steps (auto-migrate, 401, 403, listUsers)
+- `0d59b7f8` ci(e2e): pass API_SUPER_TOKEN + MARIADB_ROOT_PASSWORD
 
-- 无 salt:相同密码 → 相同 hash
-- MD5 在 2026 年已公认不安全
-- 客户端 hash 不符合 zero-trust 原则(虽然此处只是 hash 而非明文)
-- 与项目后续迁移到 bcrypt/argon2 的方向冲突
+**验证:**
+- 11/11 e2e tests pass (F-4 7 + 新 4)
+- Dataserver curl 5/5 通过(listUsers no password / register bcrypt / login correct / login wrong 401 / auto-migrate MD5→bcrypt)
+- Portal curl 4/4 通过(register / login / wrong 401 / /portal with cookie)
 
-**前置:** PR#9 commit `33c3bbe7` 已经修了 password 字段不返回的问题(否则 MD5 都校验不了)。但**底层存储仍是无 salt MD5**。
-
-**建议方案:**
-1. dataserver 新增 `POST /api/auth/login`,接受 plain password,服务端做 hash 校验
-2. 用户迁移:用户下次登录时,若发现仍是 MD5,自动 bcrypt 重哈希并更新
-3. portal 端删除 `crypto.createHash('md5')` 全部逻辑
-4. `users.pass` 字段类型与长度需扩展(`$2y$...` ≈ 60 字符)
-
-**优先级:** HIGH — 阻塞下一个 portal 安全审计
-
-**关联:** Issue track 失败(GitHub disabled),本地留档
+**已知 deviations (subagent 报告 §Concerns):**
+1. `e401` 不存在 — `ApiController::__call` 是 e4xx 文本响应;但 spec §4.1 要求 JSON body。改用 inline `header('Content-Type: application/json'); http_response_code(N); echo json_encode([...]); exit;`。
+2. DB name `zotero_www` (非 `zotprime_www`)
+3. `db_update.sh` **不自动跑** (`entrypoint.sh` 不调用)。已手动 `docker exec ... ALTER TABLE` 应用。生产部署需要在 entrypoint 或单独 init 步骤调 `db_update.sh`。
+4. e2e test 8 用 `docker exec mariadb` — 本地 dev OK,CI runner 需 docker socket
+5. `session.email` 现在是空字符串(auth endpoint 不返回 email)
 
 ---
 
@@ -54,23 +59,15 @@
 
 ---
 
-## F-3 [MEDIUM] perf(dataserver): login 全表扫描
+## F-3 [DONE 2026-07-05] perf(dataserver): login 全表扫描
 
-**问题:** `login/route.ts` 通过 `GET /admin/users` 拉**整个用户表**到 portal,然后 `users.find(u => u.username === username)`:
+**解决:** 与 F-1 联动(同一 PR 同一分支)。新端点 `POST /api/auth/login`:
+- 接受 `{username, password}` plain
+- 服务端 `password_verify` / MD5 fallback + auto-migrate
+- 返回 `{success, userID, apiKey}` (one-shot)
+- Portal 端 `login/route.ts` 删除 `users.find()` 全表扫描 + `crypto.createHash('md5')` + `getUserKeys()` 二次调用
 
-```ts
-const users = await response.json();
-const user = users.find((u: any) => u.username === username);
-```
-
-**影响:**
-1. **性能:** 每次登录拉 N 个用户记录 + JSON 解析
-2. **隐私泄漏:** portal 进程拿得到所有用户的 `userID + email + enabled`;portal 不需要这些
-3. **MD5 hash 暴露:** 即使 super-token gated,login 也不应让 portal 看到其他用户的 password hash
-
-**建议方案:** 与 F-1 联动 —— 直接引入 `POST /api/auth/login`,portal 给 plain password,dataserver 自己校验并返回 `{ success, userID, apiKey }`,portal 永远拿不到 list-all-users。
-
-**优先级:** MEDIUM — 性能影响小规模不显著,但**安全/隐私侧必须修**
+Portal 不再持有 password hash 或 list-all-users 数据。性能 + 隐私 + 安全三重问题一并解决。
 
 ---
 
