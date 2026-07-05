@@ -147,7 +147,7 @@ get_sha() { sha256sum "$1" | awk '{print $1}'; }
 
 cat > "$INTRANET_ROOT/clients-manifest.json" <<EOF
 {
-  "version": "v3.3.0",
+  "version": "${VER}",
   "clients": {
     "win10plus": {
       "installer": "clients/win10plus/$(basename "$MODERN_EXE")",
