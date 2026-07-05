@@ -30,3 +30,7 @@ zotprime-k8s/GKE/helm-chart/values.yaml
 zotprime-k8s/GKE/helm-chart/values-*.yaml
 !zotprime-k8s/GKE/helm-chart/values-example.yaml
 zotprime-k8s/GKE/issuer-lets-encrypt-staging.yaml
+
+# Build artifacts (downloaded from CI or built locally; never tracked)
+dist/
+intranet-package/
