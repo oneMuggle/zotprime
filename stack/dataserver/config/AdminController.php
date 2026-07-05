@@ -292,7 +292,7 @@ class AdminController extends ApiController {
 			}
 
 			// Fetch user's API key from the master DB (keys table)
-			$sql = "SELECT `key` FROM keys WHERE userID = ? LIMIT 1";
+			$sql = "SELECT `key` FROM `keys` WHERE userID = ? LIMIT 1";
 			$key = Zotero_DB::valueQuery($sql, [$result['userID']]);
 
 			if (!$key) {
