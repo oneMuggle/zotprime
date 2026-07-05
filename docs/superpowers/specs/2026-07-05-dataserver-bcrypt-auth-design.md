@@ -64,16 +64,17 @@ related:
 - `config/AdminController.php`
   - `createUser()` line 177-178: `MD5(?)` → `password_hash(?, PASSWORD_BCRYPT)` （PHP 标准库）
   - `listUsers()` line 231: 移除 `u.password` 从 SELECT；line 243: 移除 `'password' => $row['password']` 从 JSON 输出
-  - 新增 private method `authLogin()`:接受 `{username, password}` body，调 `password_verify()` 校验，命中 MD5 时 auto-upgrade，返回 `{success, userID, apiKey}` 或 401
-  - 新增 public method `authLoginAction()`: 路由 handler，super-user gated（与 `users()` 相同的 `isSuper()` check）
+  - 新增 public method `authLoginAction()`: 路由 handler (`/api/auth/login`),super-user gated（与 `users()` 相同的 `isSuper()` check）
+  - 新增 private method `authenticate($username, $password)`: 业务核心 — `password_verify` 失败时尝试 MD5 fallback,命中时 `password_hash` 重哈希,返回 `array('userID' => $id, 'migrated' => true/false)` 或 `null`（401）
+  - authLoginAction 内部:`authenticate()` 成功 → 调 `${dataserver.url}/users/{id}/keys` (Zotero API 端点) 取 apiKey → 返回 `{success, userID, apiKey}`
 
-- `config/routes.inc.php` line 10-11 后:新增 `'/api/auth/login' => Admin/authLogin`
+- `config/routes.inc.php` line 10-11 后:新增 `$router->map('/api/auth/login', ['controller' => 'Admin', 'action' => 'authLoginAction']);`
 
 **新建:**
 - 无（dataserver 是 PHP 无构建步骤）
 
 **SQL 迁移:**
-- `dbconfig/db_update.sh` (或新建 `db_update3.sh`) —— `ALTER TABLE users MODIFY password varchar(60) NOT NULL;`
+- `dbconfig/db_update.sh` 修改 — 在末尾追加 `ALTER TABLE users MODIFY password varchar(60) NOT NULL;`
   - 现有 MD5 32 hex 字符装得下 varchar(60) 完全无问题
   - bcrypt `$2y$10$...(22 chars salt + 31 hash)$` = 60 字符
   - 注意:`www.sql:27` 的 `char(40)` 也要同步改为 `varchar(60)`，避免全新部署时仍然限定 40 字符
@@ -246,20 +247,23 @@ Browser         POST /api/auth/login          Portal            Dataserver
    │              ─────────────────────►       │                    │
    │                                            │  POST /api/auth/login   │
    │                                            │ ────────────────────►  │
-   │                                            │  SELECT password        │
-   │                                            │    WHERE username=?     │
-   │                                            │  if bcrypt:             │
-   │                                            │    password_verify()?   │
-   │                                            │  elif md5:              │
-   │                                            │    md5(input) == stored?│
-   │                                            │    if yes:              │
-   │                                            │      UPDATE password    │
-   │                                            │        = password_hash  │
-   │                                            │  GET /users/:id/keys    │
-   │                                            │ ◄─── apiKey              │
-   │                                            │ ◄─── {success,          │
-   │                                            │      userID, apiKey}     │
-   │                                            │  set session             │
+   │                                            │  authLoginAction()       │
+   │                                            │  → authenticate()        │
+   │                                            │    SELECT password,userID│
+   │                                            │    WHERE username=?      │
+   │                                            │  if password_verify()    │
+   │                                            │    ok → userID           │
+   │                                            │  elif password 是 32hex  │
+   │                                            │    and md5(input)==stored│
+   │                                            │    → UPDATE password     │
+   │                                            │         = password_hash  │
+   │                                            │    → userID (migrated)   │
+   │                                            │  else → 401               │
+   │                                            │  GET /users/{userID}/keys│
+   │                                            │ ◄─── apiKey               │
+   │                                            │ ◄─── {success,userID,    │
+   │                                            │         apiKey}            │
+   │                                            │  set session              │
    │ ◄── { success: true }                      │                            │
    ▼                                            │                            │
    router.push('/portal')                       │                            │
