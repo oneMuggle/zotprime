@@ -173,9 +173,10 @@ class AdminController extends ApiController {
 			
 			// Create user in www database
 			Zotero_WWW_DB_1::beginTransaction();
-			
-			$sql = "INSERT INTO users (username, password) VALUES (?, MD5(?))";
-			Zotero_WWW_DB_1::query($sql, [$username, $password]);
+
+			$sql = "INSERT INTO users (username, password) VALUES (?, ?)";
+			$hashed = password_hash($password, PASSWORD_BCRYPT);
+			Zotero_WWW_DB_1::query($sql, [$username, $hashed]);
 			
 			$userID = Zotero_WWW_DB_1::valueQuery("SELECT LAST_INSERT_ID()");
 			
@@ -228,7 +229,7 @@ class AdminController extends ApiController {
 	
 	private function listUsers() {
 		try {
-			$sql = "SELECT u.userID, u.username, u.password, e.email, u.role
+			$sql = "SELECT u.userID, u.username, e.email, u.role
 					FROM users u
 					LEFT JOIN users_email e ON u.userID = e.userID
 					WHERE u.role != 'deleted'
@@ -240,12 +241,11 @@ class AdminController extends ApiController {
 				$users[] = [
 					'userID'   => $row['userID'],
 					'username' => $row['username'],
-					'password' => $row['password'],
 					'email'    => $row['email'],
 					'enabled'  => ($row['role'] == 'normal'),
 				];
 			}
-			
+
 			header('Content-Type: application/json');
 			echo json_encode($users);
 			exit;
@@ -254,7 +254,105 @@ class AdminController extends ApiController {
 			$this->handleException($e);
 		}
 	}
-	
+
+	// POST /api/auth/login - Authenticate user, return {success, userID, apiKey}
+	// Super-user gated (consistent with other admin endpoints).
+	public function authLoginAction() {
+		if (!$this->permissions->isSuper()) {
+			header('Content-Type: application/json');
+			http_response_code(403);
+			echo json_encode(['error' => 'Super user access required']);
+			exit;
+		}
+
+		if ($this->method != 'POST') {
+			header('Content-Type: application/json');
+			http_response_code(405);
+			echo json_encode(['error' => 'Method not allowed']);
+			exit;
+		}
+
+		try {
+			$data = json_decode($this->body, true);
+
+			if (!isset($data['username']) || !isset($data['password'])) {
+				header('Content-Type: application/json');
+				http_response_code(400);
+				echo json_encode(['error' => 'username and password required']);
+				exit;
+			}
+
+			$result = $this->authenticate($data['username'], $data['password']);
+
+			if (!$result) {
+				header('Content-Type: application/json');
+				http_response_code(401);
+				echo json_encode(['error' => 'Invalid credentials']);
+				exit;
+			}
+
+			// Fetch user's API key from the master DB (keys table)
+			$sql = "SELECT `key` FROM `keys` WHERE userID = ? LIMIT 1";
+			$key = Zotero_DB::valueQuery($sql, [$result['userID']]);
+
+			if (!$key) {
+				header('Content-Type: application/json');
+				http_response_code(500);
+				echo json_encode(['error' => 'No API key found']);
+				exit;
+			}
+
+			header('Content-Type: application/json');
+			echo json_encode([
+				'success' => true,
+				'userID'  => $result['userID'],
+				'apiKey'  => $key,
+			]);
+			exit;
+		}
+		catch (Exception $e) {
+			$this->handleException($e);
+		}
+	}
+
+	// Verify user credentials. Returns ['userID' => int, 'migrated' => bool] on success,
+	// null on failure. Auto-migrates legacy MD5 hashes to bcrypt on first successful login.
+	private function authenticate($username, $password) {
+		try {
+			$sql = "SELECT userID, password FROM users WHERE username = ? AND role != 'deleted' LIMIT 1";
+			$row = Zotero_WWW_DB_1::rowQuery($sql, [$username]);
+
+			if (!$row) {
+				return null;
+			}
+
+			$storedHash = $row['password'];
+			$userID = $row['userID'];
+
+			// First try bcrypt
+			if (password_verify($password, $storedHash)) {
+				return ['userID' => $userID, 'migrated' => false];
+			}
+
+			// Fallback: if stored hash is 32 hex chars (legacy MD5), try MD5 + auto-migrate
+			if (preg_match('/^[a-f0-9]{32}$/', $storedHash)) {
+				$md5Hash = md5($password);
+				if (hash_equals($storedHash, $md5Hash)) {
+					// Auto-migrate to bcrypt
+					$newHash = password_hash($password, PASSWORD_BCRYPT);
+					$updateSql = "UPDATE users SET password = ? WHERE userID = ?";
+					Zotero_WWW_DB_1::query($updateSql, [$newHash, $userID]);
+					return ['userID' => $userID, 'migrated' => true];
+				}
+			}
+
+			return null;
+		}
+		catch (Exception $e) {
+			$this->handleException($e);
+		}
+	}
+
 	private function deleteUser() {
 		try {
 			$userID = (int) $this->objectUserID;

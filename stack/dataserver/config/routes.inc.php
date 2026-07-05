@@ -11,6 +11,7 @@ $router->map('/admin/users', ['controller' => 'Admin', 'action' => 'users']);
 $router->map('/admin/users/i:objectUserID', ['controller' => 'Admin', 'action' => 'users']);
 $router->map('/admin/groups', ['controller' => 'Admin', 'action' => 'groups']);
 $router->map('/admin/items', ['controller' => 'Admin', 'action' => 'items']);
+$router->map('/api/auth/login', ['controller' => 'Admin', 'action' => 'authLoginAction']);
 
 // Global items
 $router->map('/globalitems', ['controller' => 'GlobalItems', 'extra' => ['globalItems' => true]]);

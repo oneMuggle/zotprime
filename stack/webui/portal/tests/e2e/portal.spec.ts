@@ -177,6 +177,120 @@ test.describe('Portal intranet flow', () => {
     // Reference `page` so the linter does not complain about unused params.
     expect(page).toBeDefined();
   });
+
+  test('8. 旧 MD5 用户登录自动升级到 bcrypt', async ({ request }) => {
+    const USERNAME = `e2e_md5_${Date.now()}`;
+    const EMAIL = `${USERNAME}@example.com`;
+    const PLAINTEXT = 'Md5MigrateE2E_2026!';
+
+    const superToken = process.env.API_SUPER_TOKEN ?? '';
+    expect(superToken, 'API_SUPER_TOKEN env must be set for admin endpoints').not.toBe('');
+    const mariadbPassword = process.env.MARIADB_ROOT_PASSWORD ?? '';
+    expect(mariadbPassword, 'MARIADB_ROOT_PASSWORD env must be set').not.toBe('');
+
+    // 1) Register via /admin/users (plain password -> dataserver bcrypt hashes).
+    const createResp = await request.post('http://localhost:8080/admin/users', {
+      headers: {
+        Authorization: `Bearer ${superToken}`,
+        'Content-Type': 'application/json',
+      },
+      data: { username: USERNAME, email: EMAIL, password: PLAINTEXT },
+    });
+    expect(createResp.status(), 'admin create user status').toBe(201);
+    const created = await createResp.json();
+    const userID = created.userID;
+    expect(userID).toBeGreaterThan(0);
+
+    // 2) Create an API key for the user (dataserver requires it for /api/auth/login).
+    const keyResp = await request.post(`http://localhost:8080/users/${userID}/keys`, {
+      headers: {
+        Authorization: `Bearer ${superToken}`,
+        'Content-Type': 'application/json',
+      },
+      data: {
+        name: 'e2e-md5-migrate',
+        access: { user: { library: true, files: true, notes: true, write: true } },
+      },
+    });
+    expect(keyResp.status(), 'admin create api key status').toBe(201);
+
+    // 3) Downgrade the DB password to MD5 (simulate legacy user).
+    //    Use `docker exec` against the mariadb container because the portal
+    //    container doesn't ship with a mariadb client.
+    const { execSync } = await import('node:child_process');
+    const md5Hex = execSync(
+      `printf '%s' ${JSON.stringify(PLAINTEXT)} | md5sum | awk '{print $1}'`
+    ).toString().trim();
+    execSync(
+      `docker exec -i zotprime-zotprime-db-1 mariadb -u root -p${JSON.stringify(mariadbPassword)} zotero_www -e ${JSON.stringify(`UPDATE users SET password='${md5Hex}' WHERE username='${USERNAME}'`)}`,
+      { stdio: 'pipe' }
+    );
+
+    // 4) Login with the plaintext password via the dataserver's
+    //    /api/auth/login endpoint. Should succeed AND auto-upgrade to bcrypt.
+    //    (We hit the dataserver directly because the portal /api/auth/login
+    //    route only returns `{success: true}` to the browser; the rich body
+    //    comes from the dataserver.)
+    const loginResp = await request.post('http://localhost:8080/api/auth/login', {
+      headers: {
+        Authorization: `Bearer ${superToken}`,
+        'Content-Type': 'application/json',
+      },
+      data: { username: USERNAME, password: PLAINTEXT },
+    });
+    expect(loginResp.status(), 'login status after MD5').toBe(200);
+    const body = await loginResp.json();
+    expect(body.success).toBe(true);
+    expect(body.userID).toBe(userID);
+    expect(body.apiKey).toBeTruthy();
+
+    // 5) Verify the DB now stores bcrypt.
+    const stored = execSync(
+      `docker exec -i zotprime-zotprime-db-1 mariadb -u root -p${JSON.stringify(mariadbPassword)} zotero_www -N -e ${JSON.stringify(`SELECT password FROM users WHERE username='${USERNAME}'`)}`,
+      { stdio: 'pipe' }
+    ).toString().trim();
+    expect(stored, 'stored hash should be bcrypt after auto-migrate').toMatch(/^\$2[ayb]\$/);
+  });
+
+  test('9. 错密码 → 401 + Invalid credentials', async ({ request }) => {
+    // Use the user created by step 3 (register flow). Re-use the existing USERNAME.
+    const WRONG = `${PASSWORD}_WRONG`;
+    const resp = await request.post('/api/auth/login', {
+      data: { username: USERNAME, password: WRONG },
+    });
+    expect(resp.status()).toBe(401);
+    const body = await resp.json();
+    expect(body.error).toMatch(/Invalid credentials/i);
+  });
+
+  test('10. 缺 super token (直接 hit dataserver) → 403', async ({ request }) => {
+    // POST directly to the dataserver without Authorization header.
+    // The dataserver ApiController::init() rejects unauthenticated write
+    // requests with 403 before our authLoginAction() runs. We assert the
+    // status code only — the message wording belongs to init() and may
+    // change without breaking the contract (the action is unreachable
+    // without a valid super token).
+    const resp = await request.post('http://localhost:8080/api/auth/login', {
+      headers: { 'Content-Type': 'application/json' },
+      data: { username: USERNAME, password: PASSWORD },
+    });
+    expect(resp.status()).toBe(403);
+  });
+
+  test('11. listUsers 不再返回 password 字段', async ({ request }) => {
+    const superToken = process.env.API_SUPER_TOKEN ?? '';
+    expect(superToken, 'API_SUPER_TOKEN env must be set').not.toBe('');
+    const resp = await request.get('http://localhost:8080/admin/users', {
+      headers: { Authorization: `Bearer ${superToken}` },
+    });
+    expect(resp.status()).toBe(200);
+    const users = await resp.json();
+    expect(Array.isArray(users)).toBe(true);
+    expect(users.length).toBeGreaterThan(0);
+    for (const u of users) {
+      expect(u, 'user object must not contain password key').not.toHaveProperty('password');
+    }
+  });
 });
 
 /** Helper: log in via the UI (used by step 6 to guarantee cookie presence before clearing). */

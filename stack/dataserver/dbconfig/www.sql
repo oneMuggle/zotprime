@@ -24,7 +24,7 @@
 CREATE TABLE IF NOT EXISTS `users` (
   `userID` mediumint(8) unsigned NOT NULL AUTO_INCREMENT,
   `username` varchar(40) CHARACTER SET utf8 NOT NULL,
-  `password` char(40) COLLATE utf8_bin NOT NULL,
+  `password` varchar(60) COLLATE utf8_bin NOT NULL,
   `role` enum('normal','deleted') NOT NULL DEFAULT 'normal',
   PRIMARY KEY (`userID`),
   UNIQUE KEY `username` (`username`)

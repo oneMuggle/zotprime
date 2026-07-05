@@ -294,6 +294,8 @@ jobs:
         working-directory: stack/webui/portal
         env:
           PORTAL_BASE_URL: http://localhost:3045
+          API_SUPER_TOKEN: ${{ secrets.API_SUPER_TOKEN }}
+          MARIADB_ROOT_PASSWORD: ${{ secrets.MARIADB_ROOT_PASSWORD }}
         run: npm run e2e
 
       - name: Upload Playwright report on failure
