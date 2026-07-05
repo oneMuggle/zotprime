@@ -31,19 +31,26 @@
 
 ---
 
-## F-2 [HIGH] ops(deploy): 重建外部 portal 镜像
+## F-2 [DONE 2026-07-05] ops(deploy): 重建外部 portal 镜像
 
-**问题:** PR#9 已合并,但当前 docker container `zotprime-zotprime-portal-1` 仍跑 `uniuu/zotprime-portal:v3.2.0`(旧代码,带 2FA)。本仓库无 portal Dockerfile(在外部 build pipeline 内,不在 stack/ 内可见)。
+**解决:** 实际 portal Dockerfile 在仓库内 `stack/webui/webui.Dockerfile`(非 `stack/webui/portal/` 子目录)。`bin/build-local.sh` 第 [13/13] 步触发 build,默认 tag `v3.2.0`。
 
-**行动项:**
-1. 外部 build pipeline 重建 `uniuu/zotprime-portal` 镜像并 push 新 tag(如 `v0.3.0` 配套)
-2. 本仓库 `.env`:`VER=v0.3.0`(或对应 tag)
-3. `docker compose --profile portal up -d zotprime-portal` 拉新镜像
-4. 验证:浏览器访问 `http://SERVER_IP:3045/`,登录**无需** 6 位码,直接进 `/portal`
+**已完成:**
+1. `DOCKER_BUILDKIT=1 docker build -f stack/webui/webui.Dockerfile -t uniuu/zotprime-portal:v3.2.0 -t uniuu/zotprime-portal:v0.3.0 stack/webui/`
+2. `docker compose --profile portal up -d --force-recreate zotprime-portal` 拉新镜像替换运行中容器
+3. 端到端验证 9/9 通过:
+   - `/`, `/login` → 200
+   - `/verify` → **404**(新代码生效)
+   - `/portal` 未登录 → 307 重定向 `/login`
+   - `POST /api/auth/register` 新用户 → `{"success":true}` 200
+   - `POST /api/auth/login` 同用户 → **`{"success":true}` 200**(C-1 dataserver fix 协同生效)
+   - `POST /api/auth/login` 错密码 → 401 `{"error":"Invalid credentials"}`
+   - `GET /portal` 带 cookie → 200 + 8863 bytes,内容含 "ZotPrime" / "Welcome" / "Your Groups"
+4. 镜像 tag:v3.2.0(主)+ v0.3.0(v0.3.0 release 别名,同一 SHA `78f15...`)
 
-**关联 dataserver 镜像:** 已在 PR#9 步骤内 rebuild(commit `33c3bbe7` 触发 container restart),不再需要外部 action
+**修改的 .env:** 无(`.env` 的 `VER=v3.2.0` 保持,portal 镜像同名 tag 不变)
 
-**优先级:** HIGH — **merge 后 portal 仍在生产跑旧代码**,直至该清单完成
+**反思:** 之前误判 "portal 镜像在外部 build pipeline 重建"。事实是 portal Dockerfile 一直在本仓库,只是路径是 `stack/webui/webui.Dockerfile` 而非 `stack/webui/portal/Dockerfile`。`bin/build-local.sh` 的 [13/13] 步已经写好 build 流程。重 build + 端到端验证在 PR#9 merge 后 5 分钟内完成。
 
 ---
 
