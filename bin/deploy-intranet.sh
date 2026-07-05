@@ -377,6 +377,25 @@ main() {
         echo ""
     fi
 
+    # 8. PR#4 客户端分发: 自动启动 HTTP 文件服务器
+    if [ -d "intranet-package/clients" ]; then
+        echo "  客户端 HTTP 文件服务器 (PR#4):"
+        if [ -x "bin/serve-clients.sh" ]; then
+            if PORT="${CLIENT_HTTP_PORT:-8000}" bin/serve-clients.sh > /tmp/serve-clients.log 2>&1; then
+                echo "    ✅ HTTP 服务器: http://${SERVER_IP}:${CLIENT_HTTP_PORT:-8000}/"
+                echo "       Win10+: http://${SERVER_IP}:${CLIENT_HTTP_PORT:-8000}/win10plus/"
+                echo "       Win7:   http://${SERVER_IP}:${CLIENT_HTTP_PORT:-8000}/win7/"
+                echo "       (停止: bin/serve-clients.sh --stop)"
+            else
+                echo "    ⚠ HTTP 服务器启动失败 (端口 ${CLIENT_HTTP_PORT:-8000} 可能被占用)"
+                echo "      手动启动: PORT=9000 bin/serve-clients.sh"
+            fi
+        else
+            echo "    bin/serve-clients.sh 不可执行,跳过"
+        fi
+        echo ""
+    fi
+
     echo "  常用命令:"
     echo "    查看状态:  docker compose ps"
     echo "    查看日志:  docker compose logs -f"
