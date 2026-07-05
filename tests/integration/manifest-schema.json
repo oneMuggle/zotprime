@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ZotPrime Clients Manifest",
+  "type": "object",
+  "required": ["version", "clients"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "clients": {
+      "type": "object",
+      "required": ["win10plus", "win7"],
+      "properties": {
+        "win10plus": {
+          "type": "object",
+          "required": ["installer", "sha256", "min_os", "arch"],
+          "properties": {
+            "installer": { "type": "string" },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "min_os": { "type": "string" },
+            "arch": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "win7": {
+          "type": "object",
+          "required": ["installer", "sha256", "min_os", "arch"],
+          "properties": {
+            "installer": { "type": "string" },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "min_os": { "type": "string" },
+            "arch": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    }
+  }
+}
